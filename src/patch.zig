@@ -542,11 +542,6 @@ pub fn patchFromText(self: Self, textline: [:0]const u8) (Self.PatchError || std
         while (texts.next()) |change| {
             if (change.len == 0) continue;
 
-            // const rep_size = std.mem.replacementSize(u8, change[1..], "+", "%2B");
-            // const line_encoded = try self.allocator.alloc(u8, rep_size);
-            // defer self.allocator.free(line_encoded);
-            // _ = std.mem.replace(u8, change[1..], "+", "%2B", line_encoded);
-
             const line_encoded = try self.allocator.alloc(u8, change.len - 1);
             defer self.allocator.free(line_encoded);
             @memcpy(line_encoded, change[1..]);
