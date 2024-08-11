@@ -91,41 +91,85 @@ fn diffLinesToChars(self: Self, text1: [:0]const u8, text2: [:0]const u8) struct
 
 ///Split a text into a list of strings.  Reduce the texts to a string of
 ///hashes where each Unicode character represents one line.
-fn diffLinesToCharsMunge(self: Self, text: [:0]const u8, lineArray: [][:0]const u8, lineHash: std.StringHashMapUnmanaged(usize)) [:0]const u8 {
-    _ = self;
-    _ = text;
-    _ = lineArray;
-    _ = lineHash;
+fn diffLinesToCharsMunge(self: Self, text: *[]u8, line_array: *std.ArrayList([]const u8), line_hash: *std.StringHashMap(usize)) std.mem.Allocator.Error!void {
+    // changing the implementation to modify the string
+    const len_start = text.len;
+    const lines = std.mem.splitBackwardsScalar(u8, text, '\n');
 
-    @compileError("Not Implemented");
+    var codes_start = text.len;
+
+    while (lines.next()) |line| {
+        var line_value = line_hash.get(line);
+        if (line_value == null) {
+            try line_array.append(line);
+            line_value = line_array.items.len - 1;
+            try line_hash.put(line, line_value);
+        }
+
+        const len = std.unicode.utf8CodepointSequenceLength(line_value.?) catch @panic("too many lines");
+        if (codes_start - lines.index orelse 0 < len) {
+            @panic("not enough space do something"); // TODO: implement me
+        }
+        _ = std.unicode.utf8Encode(@intCast(line_value), text.*[codes_start - len .. codes_start]) catch @panic("couldent write codepoint for some reason");
+        codes_start -= len;
+    }
+
+    @memcpy(text.*[0..], text[codes_start..len_start]);
+    text.*.len = len_start - codes_start;
+
+    if (!self.allocator.resize(text.*[0..len_start], text.len)) {
+        //failed to resize
+        var new_text = try self.allocator.alloc(u8, text.len);
+        @memcpy(&new_text, text);
+        self.allocator.free(text[0..len_start]);
+        text.* = new_text;
+    }
 }
 
-///Rehydrate the text in a diff from a string of line hashes to real lines of
-///text.
-fn diffCharsToLines(self: Self, diffs: *[]Self.Diff, lineArray: [][:0]const u8) void {
-    _ = self;
-    _ = diffs;
-    _ = lineArray;
+///Rehydrate the text in a diff from a string of line hashes to real lines of text.
+fn diffCharsToLines(self: Self, diffs: []Self.Diff, line_array: [][:0]const u8) std.mem.Allocator.Error!void {
+    // TODO: redo this by walking bakwards and taking ownership of slice
+    var text = std.ArrayList(u8).init(self.allocator);
+    defer text.deinit();
+    for (diffs) |*diff| {
+        text.clearRetainingCapacity();
+        var i = 0;
+        while (i < diff.text.len) : (i += 1) {
+            const length = std.unicode.utf8ByteSequenceLength(diff.text[i]) catch continue;
+            const codepoint = std.unicode.utf8Decode(diff.text[i .. i + @as(usize, @intCast(length))]);
+            i += @intCast(length - 1);
+            text.appendSlice(line_array[codepoint]);
+        }
 
-    @compileError("Not Implemented");
+        var res = try self.allocator.alloc(u8, text.items.len);
+        @memcpy(&res, text.items);
+        self.allocator.free(diff.text);
+        diff.*.text = res;
+    }
 }
 
 ///Determine the common prefix of two strings.
 pub fn diffCommonPrefix(self: Self, text1: [:0]const u8, text2: [:0]const u8) usize {
     _ = self;
-    _ = text1;
-    _ = text2;
-
-    @compileError("Not Implemented");
+    const n = @min(text1.len, text2.len);
+    for (0..n) |i| {
+        if (text1[i] != text2[i]) {
+            return i;
+        }
+    }
+    return n;
 }
 
 ///Determine the common suffix of two strings.
 pub fn diffCommonSuffix(self: Self, text1: [:0]const u8, text2: [:0]const u8) usize {
     _ = self;
-    _ = text1;
-    _ = text2;
-
-    @compileError("Not Implemented");
+    const n = @min(text1.len, text2.len);
+    for (1..n + 1) |i| {
+        if (text1[text1.len - i] != text2[text2.len - i]) {
+            return i - 1;
+        }
+    }
+    return n;
 }
 
 ///Determine if the suffix of one string is the prefix of another.
@@ -137,26 +181,110 @@ fn diffCommonOverlap(self: Self, text1: [:0]const u8, text2: [:0]const u8) usize
     @compileError("Not Implemented");
 }
 
-///Do the two texts share a substring which is at least half the length of
-///the longer text?
+///Do the two texts share a substring which is at least half the length of the longer text?
 ///This speedup can produce non-minimal diffs.
-fn diffHalfMatch(self: Self, text1: [:0]const u8, text2: [:0]const u8) [][:0]const u8 {
-    _ = self;
-    _ = text1;
-    _ = text2;
+fn diffHalfMatch(self: Self, text1: [:0]const u8, text2: [:0]const u8) std.mem.Allocator.Error!?struct {
+    text1_prefix: []const u8,
+    text1_suffix: []const u8,
+    text2_prefix: []const u8,
+    text2_suffix: []const u8,
+    common: []const u8, // needs to be freed
+} {
+    if (self.diff_timeout <= 0) {
+        // Don't risk returning a non-optimal diff if we have unlimited time.
+        return null;
+    }
 
-    @compileError("Not Implemented");
+    const text1_longer = text1.length > text2.length;
+    const longtext = if (text1_longer) text1 else text2;
+    const shorttext = if (text1_longer) text2 else text1;
+    if (longtext.length < 4 or shorttext.length * 2 < longtext.length) {
+        return null; // Pointless.
+    }
+
+    // First check if the second quarter is the seed for a half-match.
+    const hm1 = try diffHalfMatchI(self, longtext, shorttext, (longtext.len + 3) / 4);
+    errdefer if (hm1) |hm| self.allocator.free(hm.common);
+    // Check again based on the third quarter.
+    const hm2 = try diffHalfMatchI(self, longtext, shorttext, (longtext.len + 1) / 2);
+    errdefer if (hm2) |hm| self.allocator.free(hm.common);
+
+    if (hm1 == null and hm2 == null) return null;
+    if (hm1 != null and hm2 != null) {
+        // Both matched.  Select the longest.
+        if (hm1.?.common.len > hm2.?.common.len) {
+            self.allocator.free(hm2.?.common);
+        } else {
+            self.allocator.free(hm1.?.common);
+            hm1 = hm2;
+        }
+
+        // leave only one
+        hm2 = null;
+    }
+
+    if (if (hm1 != null) hm1 else hm2) |hm| {
+        return .{
+            .common = hm.common,
+            .text1_prefix = if (text1_longer) hm.longtext_prefix else hm.shorttext_prefix,
+            .text1_suffix = if (text1_longer) hm.longtext_suffix else hm.shorttext_suffix,
+            .text2_prefix = if (text1_longer) hm.shorttext_prefix else hm.longtext_prefix,
+            .text2_suffix = if (text1_longer) hm.shorttext_suffix else hm.longtext_suffix,
+        };
+    }
 }
 
 ///Does a substring of shorttext exist within longtext such that the
 ///substring is at least half the length of longtext?
-fn diffHalfMatchI(self: Self, longtext: [:0]const u8, shorttext: [:0]const u8, i: usize) [][:0]const u8 {
-    _ = self;
-    _ = longtext;
-    _ = shorttext;
-    _ = i;
+fn diffHalfMatchI(self: Self, longtext: [:0]const u8, shorttext: [:0]const u8, i: usize) std.mem.Allocator.Error!?struct {
+    longtext_prefix: []const u8,
+    longtext_suffix: []const u8,
+    shorttext_prefix: []const u8,
+    shorttext_suffix: []const u8,
+    common: []const u8, // needs to be freed
+} {
+    // Start with a 1/4 length substring at position i as a seed.
+    const seed = longtext[i .. i + longtext.len / 4];
 
-    @compileError("Not Implemented");
+    var best_common_len: usize = 0;
+    var best_common_a: []const u8 = undefined;
+    var best_common_b: []const u8 = undefined;
+    var best_longtext_a: []const u8 = undefined;
+    var best_longtext_b: []const u8 = undefined;
+    var best_shorttext_a: []const u8 = undefined;
+    var best_shorttext_b: []const u8 = undefined;
+
+    var j: ?usize = null;
+    while (blk: {
+        j = std.mem.indexOfPos(u8, shorttext, if (j != null) j.? + 1 else 0, seed);
+        break :blk j != -1;
+    }) {
+        const prefix_length = self.diffCommonPrefix(longtext[i..], shorttext[j..]);
+        const suffix_length = self.diffCommonSuffix(longtext[0..i], shorttext[0..j]);
+        if (best_common_len < suffix_length + prefix_length) {
+            best_common_a = shorttext[j - suffix_length .. j];
+            best_common_b = shorttext[j .. j + prefix_length];
+            best_common_len = best_common_a.len + best_common_b.len;
+            best_longtext_a = longtext[0 .. i - suffix_length];
+            best_longtext_b = longtext[i + prefix_length ..];
+            best_shorttext_a = shorttext[0 .. j - suffix_length];
+            best_shorttext_b = shorttext[j + prefix_length ..];
+        }
+    }
+
+    if (best_common_len * 2 < longtext.len) return null;
+
+    var best_common = try self.allocator.alloc(u8, best_common_len);
+    @memcpy(best_common[0..best_common_a.len], best_common_a);
+    @memcpy(best_common[best_common_a.len..], best_common_b);
+
+    return .{
+        .longtext_prefix = best_longtext_a,
+        .longtext_suffix = best_longtext_b,
+        .shorttext_prefix = best_shorttext_a,
+        .shorttext_suffix = best_shorttext_b,
+        .common = best_common,
+    };
 }
 
 ///Reduce the number of edits by eliminating semantically trivial equalities.
