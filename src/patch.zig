@@ -294,13 +294,13 @@ const null_padding_str = blk: {
 
 ///Add some padding on text start and end so that edges can match something.
 ///Intended to be called only from within `patchApply`.
-pub fn patchAddPadding(self: Self, patches: *Self.PatchList) std.mem.Allocator.Error![]const u8 {
+pub fn patchAddPadding(self: Self, patches: *Self.PatchList) std.mem.Allocator.Error![:0]const u8 {
     const padding_length = self.patch_margin;
     // const null_padding = try self.allocator.alloc(u8, padding_length);
     // for (0..padding_length) |i| {
     //     null_padding[i] = i + 1;
     // }
-    const null_padding = null_padding_str[0..padding_length];
+    const null_padding = null_padding_str[0..padding_length :0];
 
     // Bump all the patches forward.
     for (patches.items) |*patch| {
@@ -494,14 +494,14 @@ pub fn patchSplitMax(self: Self, patches: *Self.PatchList) !void {
 }
 
 ///Take a list of patches and return a textual representation.
-pub fn patchToText(self: Self, patches: Self.PatchList) ![]const u8 {
+pub fn patchToText(self: Self, patches: Self.PatchList) ![:0]const u8 {
     var text = std.ArrayList(u8).init(self.allocator);
     defer text.deinit();
     const text_writer = text.writer();
     for (patches.items) |patch| {
         try patch.format("", .{}, text_writer);
     }
-    return text.toOwnedSlice();
+    return text.toOwnedSliceSentinel(0);
 }
 
 ///Parse a textual representation of patches and return a List of Patch objects.

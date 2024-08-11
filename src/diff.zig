@@ -356,7 +356,7 @@ pub fn diffText1(self: Self, diffs: []Self.Diff) std.mem.Allocator.Error![:0]con
         try string.appendSlice(diff.text);
     };
 
-    return (try string.toOwnedSlice())[0.. :0];
+    return try string.toOwnedSliceSentinel(0);
 }
 
 ///Compute and return the destination text (all equalities and insertions).
@@ -368,7 +368,7 @@ pub fn diffText2(self: Self, diffs: []Self.Diff) std.mem.Allocator.Error![:0]con
         try string.appendSlice(diff.text);
     };
 
-    return (try string.toOwnedSlice())[0.. :0];
+    return try string.toOwnedSliceSentinel(0);
 }
 
 ///Compute the Levenshtein distance; the number of inserted, deleted or substituted characters.

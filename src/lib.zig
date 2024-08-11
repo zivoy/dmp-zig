@@ -368,7 +368,7 @@ fn dmpPatchlistToExtern(patchlist: DMP.PatchList) std.mem.Allocator.Error![]Patc
         for (patch.diffs.items, 0..) |diff, j| {
             diffs[j] = Diff{
                 .operation = @enumFromInt(@intFromEnum(diff.operation)),
-                .text = diff.text.ptr,
+                .text = (diff.text[0.. :0]).ptr,
             };
         }
 
@@ -392,7 +392,7 @@ fn dmpDifflistToExtern(diffs: []DMP.Diff) std.mem.Allocator.Error![]Diff {
     for (diffs, 0..) |diff, j| {
         o_diffs[j] = Diff{
             .operation = @enumFromInt(@intFromEnum(diff.operation)),
-            .text = diff.text.ptr,
+            .text = (diff.text[0.. :0]).ptr,
         };
     }
 
