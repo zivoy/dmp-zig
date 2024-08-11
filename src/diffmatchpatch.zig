@@ -74,10 +74,10 @@ pub const PatchList = struct {
 pub const PatchDiffsArrayList = std.ArrayListUnmanaged(Diff);
 pub const Patch = struct {
     diffs: *PatchDiffsArrayList,
-    start1: u32, // u32s here instead of usize so that it compresses better
-    length1: u32,
-    start2: u32,
-    length2: u32,
+    start1: usize, // TODO: find other u32s that should be usizes
+    start2: usize,
+    length1: usize,
+    length2: usize,
 
     ///Emulates GNU diff's format.
     ///Header: @@ -382,8 +481,9 @@
@@ -130,10 +130,10 @@ pub const Patch = struct {
         const diffs = try allocator.create(PatchDiffsArrayList);
         diffs.* = .{};
         return Patch{
-            .start1 = @intCast(start1),
-            .start2 = @intCast(start2),
-            .length1 = @intCast(length1),
-            .length2 = @intCast(length2),
+            .start1 = start1,
+            .start2 = start2,
+            .length1 = length1,
+            .length2 = length2,
             .diffs = diffs,
         };
     }

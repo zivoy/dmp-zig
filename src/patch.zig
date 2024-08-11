@@ -93,14 +93,14 @@ pub fn patchMakeStringDiffs(self: Self, text1: [:0]const u8, diffs: []Self.Diff)
     for (diffs, 1..) |diff, loc| {
         if (patch.diffs.items.len == 0 and diff.operation == .equal) {
             // new patch starts here
-            patch.start1 = @intCast(char_count1);
-            patch.start2 = @intCast(char_count2);
+            patch.start1 = char_count1;
+            patch.start2 = char_count2;
         }
 
         switch (diff.operation) {
             .insert => {
                 try patch.diffs.append(self.allocator, diff);
-                patch.length2 += @intCast(diff.text.len);
+                patch.length2 += diff.text.len;
 
                 try postpatch_text.ensureUnusedCapacity(diff.text.len);
                 var slice = postpatch_text.allocatedSlice();
@@ -336,10 +336,10 @@ pub fn patchAddPadding(self: Self, patches: *Self.PatchList) std.mem.Allocator.E
 
         @memcpy(first_patch.diffs.items[0].text, null_padding[old_text_len..]);
 
-        first_patch.start1 -= @intCast(extra_length);
-        first_patch.start2 -= @intCast(extra_length);
-        first_patch.length1 += @intCast(extra_length);
-        first_patch.length2 += @intCast(extra_length);
+        first_patch.start1 -= extra_length;
+        first_patch.start2 -= extra_length;
+        first_patch.length1 += extra_length;
+        first_patch.length2 += extra_length;
     }
 
     // Add some padding on end of last diff.
@@ -363,8 +363,8 @@ pub fn patchAddPadding(self: Self, patches: *Self.PatchList) std.mem.Allocator.E
 
         @memcpy(last_patch.diffs.getLast().text[padding_length - extra_length ..], null_padding[0..extra_length]);
 
-        last_patch.length1 += @intCast(extra_length);
-        last_patch.length2 += @intCast(extra_length);
+        last_patch.length1 += extra_length;
+        last_patch.length2 += extra_length;
     }
 
     return null_padding;
@@ -410,8 +410,8 @@ pub fn patchSplitMax(self: Self, patches: *Self.PatchList) !void {
             patch = try Self.Patch.init(self.allocator, start1 - precontext.items.len, start2 - precontext.items.len, 0, 0);
             empty = true;
             if (precontext.items.len != 0) {
-                patch.length1 = @intCast(precontext.items.len);
-                patch.length2 = @intCast(precontext.items.len);
+                patch.length1 = precontext.items.len;
+                patch.length2 = precontext.items.len;
                 try patch.diffs.append(self.allocator, try Self.Diff.fromSlice(self.allocator, precontext.items, .equal));
             }
             while (big_patch.diffs.items.len != 0 and patch.length1 < patch_size - self.patch_margin) {
@@ -419,14 +419,14 @@ pub fn patchSplitMax(self: Self, patches: *Self.PatchList) !void {
                 diff_text = big_patch.diffs.items[0].text;
                 if (diff_type == .insert) {
                     // Insertions are harmless.
-                    patch.length2 += @intCast(diff_text.len);
+                    patch.length2 += diff_text.len;
                     start2 += diff_text.len;
                     try patch.diffs.append(self.allocator, big_patch.diffs.items[0]);
                     _ = big_patch.diffs.orderedRemove(0);
                     empty = false;
                 } else if (diff_type == .delete and patch.diffs.items.len == 1 and patch.diffs.items[0].operation == .equal and diff_text.len > 2 * patch_size) {
                     // This is a large deletion.  Let it pass in one chunk.
-                    patch.length1 += @intCast(diff_text.len);
+                    patch.length1 += diff_text.len;
                     start1 += diff_text.len;
                     try patch.diffs.append(self.allocator, big_patch.diffs.items[0]);
                     _ = big_patch.diffs.orderedRemove(0);
@@ -434,10 +434,10 @@ pub fn patchSplitMax(self: Self, patches: *Self.PatchList) !void {
                 } else {
                     // Deletion or equality.  Only take as much as we can stomach.
                     const diff_text_len = @min(diff_text.len, patch_size - patch.length1 - self.patch_margin);
-                    patch.length1 += @intCast(diff_text_len);
+                    patch.length1 += diff_text_len;
                     start1 += diff_text_len;
                     if (diff_type == .equal) {
-                        patch.length2 += @intCast(diff_text_len);
+                        patch.length2 += diff_text_len;
                         start2 += diff_text_len;
                     } else {
                         empty = false;
@@ -465,8 +465,8 @@ pub fn patchSplitMax(self: Self, patches: *Self.PatchList) !void {
             }
 
             if (postcontext.len != 0) {
-                patch.length1 += @intCast(postcontext.len);
-                patch.length2 += @intCast(postcontext.len);
+                patch.length1 += postcontext.len;
+                patch.length2 += postcontext.len;
                 if (patch.diffs.items.len != 0 and patch.diffs.getLast().operation == .equal) {
                     var last_diff = patch.diffs.getLast();
                     const old_diff_text_len = last_diff.text.len;
@@ -529,7 +529,7 @@ pub fn patchFromText(self: Self, textline: [:0]const u8) (Self.PatchError || std
             patch.length1 = 0;
         } else {
             patch.start1 -= 1;
-            patch.length1 = @intCast(header[1].?);
+            patch.length1 = header[1].?;
         }
 
         if (header[3] == null) {
@@ -539,7 +539,7 @@ pub fn patchFromText(self: Self, textline: [:0]const u8) (Self.PatchError || std
             patch.length2 = 0;
         } else {
             patch.start2 -= 1;
-            patch.length2 = @intCast(header[3].?);
+            patch.length2 = header[3].?;
         }
 
         while (texts.next()) |change| {
