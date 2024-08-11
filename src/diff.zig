@@ -424,9 +424,7 @@ pub fn diffFromDelta(self: Self, text1: []const u8, delta: []const u8) ![]Self.D
 
     var pointer: usize = 0;
     var tokens = std.mem.splitScalar(u8, delta, '\t');
-    var first = true;
-    while (if (first) @as(?[]const u8, tokens.first()) else tokens.next()) |token| {
-        first = false;
+    while (tokens.next()) |token| {
         if (token.len == 0) {
             // Blank tokens are ok (from a trailing \t).
             continue;

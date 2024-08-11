@@ -515,10 +515,7 @@ pub fn patchFromText(self: Self, textline: [:0]const u8) (Self.PatchError || std
     var patch: Self.Patch = undefined;
 
     var texts = std.mem.splitScalar(u8, textline, '\n');
-    var first = true;
-    while (if (first) @as(?[]const u8, texts.first()) else texts.next()) |text| {
-        first = false;
-
+    while (texts.next()) |text| {
         const header = matchPatchHeader(text) catch null orelse return Self.PatchError.InvalidPatchString;
 
         patch = try Self.Patch.init(self.allocator, header[0], header[2], undefined, undefined);
