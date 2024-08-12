@@ -61,10 +61,37 @@ pub fn diffBisectSplit(self: Self, text1: []const u8, text2: []const u8, x: usiz
     @compileError("Not Implemented");
 }
 
+pub const LineArray = struct {
+    const S = @This();
+    items: *[][]const u8,
+    array_list: *std.ArrayListUnmanaged([]const u8),
+    allocator: std.mem.Allocator,
+    pub fn init(allocator: std.mem.Allocator) !S {
+        var array_list = try allocator.create(std.ArrayListUnmanaged([]const u8));
+        array_list.* = try std.ArrayListUnmanaged([]const u8).initCapacity(allocator, 0);
+        return .{
+            .items = &array_list.items,
+            .array_list = array_list,
+            .allocator = allocator,
+        };
+    }
+    pub fn deinit(self: *S) void {
+        for (self.array_list.items) |item| self.allocator.free(item);
+        self.array_list.deinit(self.allocator);
+        self.allocator.destroy(self.array_list);
+        self.items = undefined;
+    }
+    pub fn append(self: S, text: []const u8) std.mem.Allocator.Error!void {
+        const text_copy = try self.allocator.alloc(u8, text.len);
+        @memcpy(text_copy, text);
+        try self.array_list.append(self.allocator, text_copy);
+    }
+};
+
 ///Split two texts into a list of strings.  Reduce the texts to a string of
 ///hashes where each Unicode character represents one line.
-pub fn diffLinesToChars(self: Self, text1: *[]const u8, text2: *[]const u8) std.mem.Allocator.Error!std.ArrayList([]const u8) {
-    var line_array = std.ArrayList([]const u8).init(self.allocator);
+pub fn diffLinesToChars(self: Self, text1: *[]u8, text2: *[]u8) std.mem.Allocator.Error!LineArray {
+    var line_array = try LineArray.init(self.allocator);
     errdefer line_array.deinit();
     var line_hash = std.StringHashMap(usize).init(self.allocator);
     defer line_hash.deinit();
@@ -83,41 +110,61 @@ pub fn diffLinesToChars(self: Self, text1: *[]const u8, text2: *[]const u8) std.
 
 ///Split a text into a list of strings.  Reduce the texts to a string of
 ///hashes where each Unicode character represents one line.
-pub fn diffLinesToCharsMunge(self: Self, text: *[]u8, line_array: *std.ArrayList([]const u8), line_hash: *std.StringHashMap(usize)) std.mem.Allocator.Error!void {
+pub fn diffLinesToCharsMunge(self: Self, text_ref: *[]u8, line_array: *LineArray, line_hash: *std.StringHashMap(usize)) std.mem.Allocator.Error!void {
+    var text = text_ref.*;
     // changing the implementation to modify the string
-    const len_start = text.len;
-    const lines = std.mem.splitBackwardsScalar(u8, text, '\n');
+    var lines = std.mem.splitScalar(u8, text, '\n');
 
-    var codes_start = text.len;
+    var codes_len: usize = 0;
 
     while (lines.next()) |hl| {
-        const line = hl[0 .. hl.len + 1]; // include newline
+        if (hl.len == 0 and lines.index == null) continue; // skip empty end
+        const idx = lines.index orelse (text.len - hl.len);
+        const length = if (idx + hl.len == text.len) hl.len else hl.len + 1;
+        const line = hl.ptr[0..length]; // include newline
         var line_value = line_hash.get(line);
         if (line_value == null) {
-            try line_array.append(line); // TODO: might need to make a copy
+            try line_array.append(line);
             line_value = line_array.items.len - 1;
-            try line_hash.put(line, line_value);
+            try line_hash.put(line, line_value.?);
         }
 
         const len = std.unicode.utf8CodepointSequenceLength(@intCast(line_value.?)) catch @panic("too many lines");
-        if (codes_start - lines.index orelse 0 < len) {
-            @panic("not enough space do something"); // TODO: implement me
+        // TODO: resize less often by doing capacity
+        if (text.len - codes_len < len or (len > 1 and std.mem.indexOfScalar(u8, hl[1..@min(hl.len, len - 1)], '\n') != null)) {
+            const old_len = text.len;
+            const new_len = text.len + (len - (text.len - codes_len));
+            text.len = new_len;
+            std.debug.print("\nresizing {d} -> {d} ---- \n", .{ lines.buffer.len, new_len });
+            if (!self.allocator.resize(text.ptr[0..old_len], new_len)) {
+                //failed to resize
+                const new_text = try self.allocator.alloc(u8, new_len);
+                @memcpy(new_text, text.ptr[0..old_len]);
+                @memset(text.ptr[0..old_len], undefined);
+                self.allocator.free(text[0..old_len]);
+                text = new_text;
+            }
+            if (codes_len + len > old_len) std.mem.copyBackwards(u8, text[codes_len + len .. new_len], text[codes_len + 1 .. old_len]);
         }
-        _ = std.unicode.utf8Encode(@intCast(line_value), text.*[codes_start - len .. codes_start]) catch @panic("couldent write codepoint for some reason");
-        codes_start -= len;
+        _ = std.unicode.utf8Encode(@intCast(line_value.?), text[codes_len .. codes_len + len]) catch @panic("couldent write codepoint for some reason");
+        codes_len += len;
     }
 
-    @memcpy(text.*[0..], text[codes_start..len_start]);
-    text.*.len = len_start - codes_start;
-
-    if (!self.allocator.resize(text.*[0..len_start], text.len)) {
-        //failed to resize
-        var new_text = try self.allocator.alloc(u8, text.len);
-        @memcpy(&new_text, text);
-        @memset(text[0..len_start], undefined);
-        self.allocator.free(text[0..len_start]);
-        text.* = new_text;
+    if (codes_len != text.len) {
+        const len_start = text.len;
+        text.len = codes_len;
+        // std.debug.print("\nresizing {d} -> {d} ---- \n", .{ lines.buffer.len, codes_len });
+        if (!self.allocator.resize(text.ptr[0..len_start], codes_len)) {
+            //failed to resize
+            // std.debug.print("failed to resize\n", .{});
+            const new_text = try self.allocator.alloc(u8, codes_len);
+            @memcpy(new_text, text.ptr[0..codes_len]);
+            @memset(text.ptr[0..len_start], undefined);
+            self.allocator.free(text.ptr[0..len_start]);
+            text = new_text;
+        }
     }
+    text_ref.* = text;
 }
 
 ///Rehydrate the text in a diff from a string of line hashes to real lines of text.
