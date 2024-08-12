@@ -126,7 +126,7 @@ pub fn diffLinesToCharsMunge(self: Self, text_ref: *[]u8, line_array: *LineArray
         if (line_value == null) {
             try line_array.append(line);
             line_value = line_array.items.len - 1;
-            try line_hash.put(line, line_value.?);
+            try line_hash.put(line_array.items.*[line_value.?], line_value.?);
         }
 
         const len = std.unicode.utf8CodepointSequenceLength(@intCast(line_value.?)) catch @panic("too many lines");
@@ -135,7 +135,7 @@ pub fn diffLinesToCharsMunge(self: Self, text_ref: *[]u8, line_array: *LineArray
             const old_len = text.len;
             const new_len = text.len + (len - (text.len - codes_len));
             text.len = new_len;
-            std.debug.print("\nresizing {d} -> {d} ---- \n", .{ lines.buffer.len, new_len });
+            // std.debug.print("\nresizing {d} -> {d} ---- \n", .{ lines.buffer.len, new_len });
             if (!self.allocator.resize(text.ptr[0..old_len], new_len)) {
                 //failed to resize
                 const new_text = try self.allocator.alloc(u8, new_len);
