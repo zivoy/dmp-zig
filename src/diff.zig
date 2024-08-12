@@ -6,12 +6,12 @@ const utils = @import("utils.zig");
 ///Run a faster, slightly less optimal diff.
 ///This method allows the 'checklines' of `diffMainStringStringBool` to be optional.
 ///Most of the time checklines is wanted, so default to true.
-pub fn diffMainStringString(self: Self, text1: [:0]const u8, text2: [:0]const u8) []Self.Diff {
+pub fn diffMainStringString(self: Self, text1: []const u8, text2: []const u8) []Self.Diff {
     return self.diffMainStringStringBool(text1, text2, true);
 }
 
 ///Find the differences between two texts.
-pub fn diffMainStringStringBool(self: Self, text1: [:0]const u8, text2: [:0]const u8, check_lines: bool) []Self.Diff {
+pub fn diffMainStringStringBool(self: Self, text1: []const u8, text2: []const u8, check_lines: bool) []Self.Diff {
     _ = self;
     _ = text1;
     _ = text2;
@@ -21,7 +21,7 @@ pub fn diffMainStringStringBool(self: Self, text1: [:0]const u8, text2: [:0]cons
 
 ///Find the differences between two texts.  Simplifies the problem by
 ///stripping any common prefix or suffix off the texts before diffing.
-fn diffMainStringStringBoolTimeout(self: Self, text1: [:0]const u8, text2: [:0]const u8, check_lines: bool, deadline: std.time.epoch) []Self.Diff {
+fn diffMainStringStringBoolTimeout(self: Self, text1: []const u8, text2: []const u8, check_lines: bool, deadline: std.time.epoch) []Self.Diff {
     _ = self;
     _ = text1;
     _ = text2;
@@ -32,7 +32,7 @@ fn diffMainStringStringBoolTimeout(self: Self, text1: [:0]const u8, text2: [:0]c
 
 ///Find the differences between two texts.  Assumes that the texts do not
 ///have any common prefix or suffix.
-fn diffCompute(self: Self, text1: [:0]const u8, text2: [:0]const u8, checklines: bool, deadline: i64) []Self.Diff {
+fn diffCompute(self: Self, text1: []const u8, text2: []const u8, checklines: bool, deadline: i64) []Self.Diff {
     _ = self;
     _ = text1;
     _ = text2;
@@ -45,7 +45,7 @@ fn diffCompute(self: Self, text1: [:0]const u8, text2: [:0]const u8, checklines:
 ///Do a quick line-level diff on both strings, then rediff the parts for
 ///greater accuracy.
 ///This speedup can produce non-minimal diffs.
-fn diffLineMode(self: Self, text1: [:0]const u8, text2: [:0]const u8, deadline: i64) []Self.Diff {
+fn diffLineMode(self: Self, text1: []const u8, text2: []const u8, deadline: i64) []Self.Diff {
     _ = self;
     _ = text1;
     _ = text2;
@@ -57,7 +57,7 @@ fn diffLineMode(self: Self, text1: [:0]const u8, text2: [:0]const u8, deadline: 
 ///Find the 'middle snake' of a diff, split the problem in two
 ///and return the recursively constructed diff.
 ///See Myers 1986 paper: An O(ND) Difference Algorithm and Its Variations.
-fn diffBisect(self: Self, text1: [:0]const u8, text2: [:0]const u8, deadline: i64) []Self.Diff {
+fn diffBisect(self: Self, text1: []const u8, text2: []const u8, deadline: i64) []Self.Diff {
     _ = self;
     _ = text1;
     _ = text2;
@@ -68,7 +68,7 @@ fn diffBisect(self: Self, text1: [:0]const u8, text2: [:0]const u8, deadline: i6
 
 ///Given the location of the 'middle snake', split the diff in two parts
 ///and recurse.
-fn diffBisectSplit(self: Self, text1: [:0]const u8, text2: [:0]const u8, x: usize, y: usize, deadline: i64) []Self.Diff {
+fn diffBisectSplit(self: Self, text1: []const u8, text2: []const u8, x: usize, y: usize, deadline: i64) []Self.Diff {
     _ = self;
     _ = text1;
     _ = text2;
@@ -98,15 +98,16 @@ fn diffLinesToCharsMunge(self: Self, text: *[]u8, line_array: *std.ArrayList([]c
 
     var codes_start = text.len;
 
-    while (lines.next()) |line| {
+    while (lines.next()) |hl| {
+        const line = hl[0 .. hl.len + 1]; // include newline
         var line_value = line_hash.get(line);
         if (line_value == null) {
-            try line_array.append(line);
+            try line_array.append(line); // TODO: might need to make a copy
             line_value = line_array.items.len - 1;
             try line_hash.put(line, line_value);
         }
 
-        const len = std.unicode.utf8CodepointSequenceLength(line_value.?) catch @panic("too many lines");
+        const len = std.unicode.utf8CodepointSequenceLength(@intCast(line_value.?)) catch @panic("too many lines");
         if (codes_start - lines.index orelse 0 < len) {
             @panic("not enough space do something"); // TODO: implement me
         }
@@ -121,6 +122,7 @@ fn diffLinesToCharsMunge(self: Self, text: *[]u8, line_array: *std.ArrayList([]c
         //failed to resize
         var new_text = try self.allocator.alloc(u8, text.len);
         @memcpy(&new_text, text);
+        @memset(text[0..len_start], undefined);
         self.allocator.free(text[0..len_start]);
         text.* = new_text;
     }
@@ -146,9 +148,11 @@ fn diffCharsToLines(self: Self, diffs: []Self.Diff, line_array: [][:0]const u8) 
         if (!self.allocator.resize(diff.text, len)) {
             //failed to resize
             const new_text = try self.allocator.alloc(u8, len);
+            @memset(diff.text, undefined);
             self.allocator.free(diff.text);
             diff.*.text = new_text;
         }
+        diff.text.len = len;
 
         i = 0;
         for (text.items) |codepoint| {
@@ -599,8 +603,6 @@ pub fn diffFromDelta(self: Self, text1: []const u8, delta: []const u8) ![]Self.D
     if (pointer != text1.len) return Self.DiffError.DeltaShorterThenSource;
     return diffs.toOwnedSlice();
 }
-
-const testing = std.testing;
 
 comptime {
     _ = @import("diff_tests.zig");

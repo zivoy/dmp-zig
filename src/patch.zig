@@ -333,6 +333,7 @@ pub fn patchAddPadding(self: Self, patches: *Self.PatchList) std.mem.Allocator.E
         } else {
             std.mem.copyBackwards(u8, first_patch.diffs.items[0].text[padding_length - old_text_len ..], first_patch.diffs.items[0].text[0..old_text_len]);
         }
+        first_patch.diffs.items[0].text.len = padding_length;
 
         @memcpy(first_patch.diffs.items[0].text, null_padding[old_text_len..]);
 
@@ -360,6 +361,7 @@ pub fn patchAddPadding(self: Self, patches: *Self.PatchList) std.mem.Allocator.E
             self.allocator.free(last_patch.diffs.getLast().text);
             last_patch.diffs.items[last_patch.diffs.items.len - 1].text = new_last_text;
         }
+        last_patch.diffs.getLast().text.len = padding_length;
 
         @memcpy(last_patch.diffs.getLast().text[padding_length - extra_length ..], null_padding[0..extra_length]);
 
@@ -470,13 +472,15 @@ pub fn patchSplitMax(self: Self, patches: *Self.PatchList) !void {
                 if (patch.diffs.items.len != 0 and patch.diffs.getLast().operation == .equal) {
                     var last_diff = patch.diffs.getLast();
                     const old_diff_text_len = last_diff.text.len;
-                    if (!self.allocator.resize(last_diff.text, old_diff_text_len + postcontext.len)) {
-                        const new_text = try self.allocator.alloc(u8, old_diff_text_len + postcontext.len);
+                    const new_len = old_diff_text_len + postcontext.len;
+                    if (!self.allocator.resize(last_diff.text, new_len)) {
+                        const new_text = try self.allocator.alloc(u8, new_len);
                         @memcpy(new_text, last_diff.text);
                         @memset(last_diff.text, undefined);
                         self.allocator.free(last_diff.text);
                         last_diff.text = new_text;
                     }
+                    last_diff.text.len = new_len;
                     @memcpy(last_diff.text[old_diff_text_len..], postcontext);
                 } else {
                     try patch.diffs.append(self.allocator, try Self.Diff.fromSlice(self.allocator, postcontext, .equal));
