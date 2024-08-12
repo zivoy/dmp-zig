@@ -128,23 +128,35 @@ fn diffLinesToCharsMunge(self: Self, text: *[]u8, line_array: *std.ArrayList([]c
 
 ///Rehydrate the text in a diff from a string of line hashes to real lines of text.
 fn diffCharsToLines(self: Self, diffs: []Self.Diff, line_array: [][:0]const u8) std.mem.Allocator.Error!void {
-    // TODO: redo this by walking bakwards and taking ownership of slice
-    var text = std.ArrayList(u8).init(self.allocator);
+    var text = std.ArrayList(u21).init(self.allocator);
     defer text.deinit();
     for (diffs) |*diff| {
         text.clearRetainingCapacity();
+        try text.ensureTotalCapacity(diff.text.len); // will most likly be shorter but this is the max needed to hold it
+        var len: usize = 0;
         var i = 0;
         while (i < diff.text.len) : (i += 1) {
             const length = std.unicode.utf8ByteSequenceLength(diff.text[i]) catch continue;
-            const codepoint = std.unicode.utf8Decode(diff.text[i .. i + @as(usize, @intCast(length))]);
+            const codepoint = std.unicode.utf8Decode(diff.text[i .. i + @as(usize, @intCast(length))]) catch @panic("problem decoding utf8");
             i += @intCast(length - 1);
-            text.appendSlice(line_array[codepoint]);
+            text.appendAssumeCapacity(codepoint);
+            len += line_array[codepoint].len;
         }
 
-        var res = try self.allocator.alloc(u8, text.items.len);
-        @memcpy(&res, text.items);
-        self.allocator.free(diff.text);
-        diff.*.text = res;
+        if (!self.allocator.resize(diff.text, len)) {
+            //failed to resize
+            const new_text = try self.allocator.alloc(u8, len);
+            self.allocator.free(diff.text);
+            diff.*.text = new_text;
+        }
+
+        i = 0;
+        for (text.items) |codepoint| {
+            const line = line_array[codepoint];
+            @memcpy(diff.text[i..], line);
+            i += line.len;
+        }
+        std.debug.assert(i == diff.text.len);
     }
 }
 
