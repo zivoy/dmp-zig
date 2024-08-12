@@ -81,12 +81,22 @@ fn diffBisectSplit(self: Self, text1: []const u8, text2: []const u8, x: usize, y
 
 ///Split two texts into a list of strings.  Reduce the texts to a string of
 ///hashes where each Unicode character represents one line.
-fn diffLinesToChars(self: Self, text1: [:0]const u8, text2: [:0]const u8) struct { [:0]const u8, [:0]const u8, [][:0]const u8 } {
-    _ = self;
-    _ = text1;
-    _ = text2;
+fn diffLinesToChars(self: Self, text1: *[]const u8, text2: *[]const u8) std.mem.Allocator.Error!std.ArrayList([]const u8) {
+    var line_array = std.ArrayList([]const u8).init(self.allocator);
+    errdefer line_array.deinit();
+    var line_hash = std.StringHashMap(usize).init(self.allocator);
+    defer line_hash.deinit();
+    // e.g. linearray[4] == "Hello\n"
+    // e.g. linehash.get("Hello\n") == 4
 
-    @compileError("Not Implemented");
+    // "\x00" is a valid character, but various debuggers don't like it.
+    // So we'll insert a junk entry to avoid generating a null character.
+    try line_array.append("");
+
+    try diffLinesToCharsMunge(self, text1, &line_array, &line_hash);
+    try diffLinesToCharsMunge(self, text2, &line_array, &line_hash);
+
+    return line_array;
 }
 
 ///Split a text into a list of strings.  Reduce the texts to a string of
