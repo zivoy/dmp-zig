@@ -75,6 +75,11 @@ pub const LineArray = struct {
             .allocator = allocator,
         };
     }
+    pub fn fromSlice(allocator: std.mem.Allocator, slice: [][]const u8) !S {
+        var s = try S.init(allocator);
+        for (slice) |item| try s.append(item);
+        return s;
+    }
     pub fn deinit(self: *S) void {
         for (self.array_list.items) |item| self.allocator.free(item);
         self.array_list.deinit(self.allocator);
@@ -166,16 +171,19 @@ pub fn diffLinesToCharsMunge(self: Self, text_ref: *[]u8, line_array: *LineArray
     }
     text_ref.* = text;
 }
+pub fn diffCharsToLinesLineArray(self: Self, diffs: *[]Self.Diff, line_array: LineArray) std.mem.Allocator.Error!void {
+    return diffCharsToLines(self, diffs, line_array.items.*);
+}
 
 ///Rehydrate the text in a diff from a string of line hashes to real lines of text.
-pub fn diffCharsToLines(self: Self, diffs: []Self.Diff, line_array: [][:0]const u8) std.mem.Allocator.Error!void {
+pub fn diffCharsToLines(self: Self, diffs: *[]Self.Diff, line_array: [][]const u8) std.mem.Allocator.Error!void {
     var text = std.ArrayList(u21).init(self.allocator);
     defer text.deinit();
-    for (diffs) |*diff| {
+    for (diffs.*) |*diff| {
         text.clearRetainingCapacity();
         try text.ensureTotalCapacity(diff.text.len); // will most likly be shorter but this is the max needed to hold it
         var len: usize = 0;
-        var i = 0;
+        var i: usize = 0;
         while (i < diff.text.len) : (i += 1) {
             const length = std.unicode.utf8ByteSequenceLength(diff.text[i]) catch continue;
             const codepoint = std.unicode.utf8Decode(diff.text[i .. i + @as(usize, @intCast(length))]) catch @panic("problem decoding utf8");
@@ -196,7 +204,7 @@ pub fn diffCharsToLines(self: Self, diffs: []Self.Diff, line_array: [][:0]const 
         i = 0;
         for (text.items) |codepoint| {
             const line = line_array[codepoint];
-            @memcpy(diff.text[i..], line);
+            @memcpy(diff.text[i .. i + line.len], line);
             i += line.len;
         }
         std.debug.assert(i == diff.text.len);
@@ -204,7 +212,7 @@ pub fn diffCharsToLines(self: Self, diffs: []Self.Diff, line_array: [][:0]const 
 }
 
 ///Determine if the suffix of one string is the prefix of another.
-pub fn diffCommonOverlap(self: Self, text1: [:0]const u8, text2: [:0]const u8) usize {
+pub fn diffCommonOverlap(self: Self, text1: [:0]const u8, text2: []const u8) usize {
     _ = self;
     _ = text1;
     _ = text2;
@@ -214,7 +222,7 @@ pub fn diffCommonOverlap(self: Self, text1: [:0]const u8, text2: [:0]const u8) u
 
 ///Do the two texts share a substring which is at least half the length of the longer text?
 ///This speedup can produce non-minimal diffs.
-pub fn diffHalfMatch(self: Self, text1: [:0]const u8, text2: [:0]const u8) std.mem.Allocator.Error!?struct {
+pub fn diffHalfMatch(self: Self, text1: [:0]const u8, text2: []const u8) std.mem.Allocator.Error!?struct {
     text1_prefix: []const u8,
     text1_suffix: []const u8,
     text2_prefix: []const u8,
@@ -267,7 +275,7 @@ pub fn diffHalfMatch(self: Self, text1: [:0]const u8, text2: [:0]const u8) std.m
 
 ///Does a substring of shorttext exist within longtext such that the
 ///substring is at least half the length of longtext?
-pub fn diffHalfMatchI(self: Self, longtext: [:0]const u8, shorttext: [:0]const u8, i: usize) std.mem.Allocator.Error!?struct {
+pub fn diffHalfMatchI(self: Self, longtext: []const u8, shorttext: []const u8, i: usize) std.mem.Allocator.Error!?struct {
     longtext_prefix: []const u8,
     longtext_suffix: []const u8,
     shorttext_prefix: []const u8,
@@ -321,7 +329,7 @@ pub fn diffHalfMatchI(self: Self, longtext: [:0]const u8, shorttext: [:0]const u
 ///Given two strings, compute a score representing whether the internal
 ///boundary falls on logical boundaries.
 ///Scores range from 6 (best) to 0 (worst).
-pub fn diffCleanupSemanticScore(self: Self, one: [:0]const u8, two: [:0]const u8) usize {
+pub fn diffCleanupSemanticScore(self: Self, one: []const u8, two: []const u8) usize {
     _ = self;
     if (one.len == 0 and two.len == 0) {
         // Edges are the best.

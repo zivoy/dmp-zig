@@ -41,6 +41,15 @@ test "diff lines to chars" {
         const buf = try testing.allocator.allocSentinel(u8, 10, 0);
         line.* = try std.fmt.bufPrint(buf, "{d}\n", .{i});
     }
+    var chars: [127 + (n + 1 - 128) * 2]u8 = undefined;
+    {
+        var pointer: usize = 0;
+        for (1..n + 1) |i| {
+            const len = std.unicode.utf8CodepointSequenceLength(@intCast(i)) catch @panic("utf length");
+            _ = std.unicode.utf8Encode(@intCast(i), chars[pointer .. pointer + len]) catch @panic("utf encode");
+            pointer += len;
+        }
+    }
 
     const test_cases = [_]TestCase{
         .{ .text1 = testString(""), .text2 = testString("alpha\r\nbeta\r\n\r\n\r\n"), .expected_text1 = "", .expected_text2 = "\x01\x02\x03\x03", .expected_lines = &.{ "", "alpha\r\n", "beta\r\n", "\r\n" } },
@@ -49,22 +58,7 @@ test "diff lines to chars" {
         .{ .text1 = testString("alpha\nbeta\nalpha"), .text2 = testString(""), .expected_text1 = "\x01\x02\x03", .expected_text2 = "", .expected_lines = &.{ "", "alpha\n", "beta\n", "alpha" } },
         // Same lines in Text1 and Text2
         .{ .text1 = testString("abc\ndefg\n12345\n"), .text2 = testString("abc\ndef\n12345\n678"), .expected_text1 = "\x01\x02\x03", .expected_text2 = "\x01\x04\x03\x05", .expected_lines = &.{ "", "abc\n", "defg\n", "12345\n", "def\n", "678" } },
-        .{
-            .text1 = try std.mem.join(testing.allocator, "", &long_lines),
-            .text2 = testString(""),
-            .expected_text1 = blk: {
-                var buf: [127 + (n + 1 - 128) * 2]u8 = undefined;
-                var pointer: usize = 0;
-                for (1..n + 1) |i| {
-                    const len = std.unicode.utf8CodepointSequenceLength(@intCast(i)) catch @panic("utf length");
-                    _ = std.unicode.utf8Encode(@intCast(i), buf[pointer .. pointer + len]) catch @panic("utf encode");
-                    pointer += len;
-                }
-                break :blk &buf;
-            },
-            .expected_text2 = "",
-            .expected_lines = &long_lines,
-        },
+        .{ .text1 = try std.mem.join(testing.allocator, "", &long_lines), .text2 = testString(""), .expected_text1 = &chars, .expected_text2 = "", .expected_lines = &long_lines },
     };
 
     for (test_cases) |test_case| {
@@ -77,6 +71,73 @@ test "diff lines to chars" {
         try testing.expectEqualStrings(test_case.expected_text1, text1);
         try testing.expectEqualStrings(test_case.expected_text2, text2);
         for (test_case.expected_lines, line_array.items.*) |expected, item| try testing.expectEqualSlices(u8, expected, item);
+    }
+}
+
+test "chars to lines" {
+    const TestCase = struct {
+        diffs: []const DMP.Diff,
+        lines: DiffPrivate.LineArray,
+
+        expected: []const DMP.Diff,
+    };
+
+    const dmp = DMP.init(testing.allocator);
+
+    // More than 256 to reveal any 8-bit limitations.
+    const n = 300;
+    var long_lines: [n + 1][]u8 = undefined;
+    defer for (long_lines[1..]) |line| testing.allocator.free(std.mem.span(@as([*c]u8, line.ptr)));
+    long_lines[0] = testString("");
+    defer testing.allocator.free(long_lines[0]);
+    for (long_lines[1..], 1..) |*line, i| {
+        const buf = try testing.allocator.allocSentinel(u8, 10, 0);
+        line.* = try std.fmt.bufPrint(buf, "{d}\n", .{i});
+    }
+    var chars: [127 + (n + 1 - 128) * 2]u8 = undefined;
+    {
+        var pointer: usize = 0;
+        for (1..n + 1) |i| {
+            const len = std.unicode.utf8CodepointSequenceLength(@intCast(i)) catch @panic("utf length");
+            _ = std.unicode.utf8Encode(@intCast(i), chars[pointer .. pointer + len]) catch @panic("utf encode");
+            pointer += len;
+        }
+    }
+
+    const test_cases = [_]TestCase{
+        .{
+            .diffs = &.{
+                try DMP.Diff.fromString(testing.allocator, "\x01\x02\x01", .equal),
+                try DMP.Diff.fromString(testing.allocator, "\x02\x01\x02", .insert),
+            },
+            .lines = try DiffPrivate.LineArray.fromSlice(testing.allocator, @constCast(&[_][]const u8{ "", "alpha\n", "beta\n" })),
+            .expected = &.{
+                try DMP.Diff.fromString(testing.allocator, "alpha\nbeta\nalpha\n", .equal),
+                try DMP.Diff.fromString(testing.allocator, "beta\nalpha\nbeta\n", .insert),
+            },
+        },
+        .{
+            .diffs = &.{try DMP.Diff.fromSlice(testing.allocator, &chars, .delete)},
+            .lines = try DiffPrivate.LineArray.fromSlice(testing.allocator, &long_lines),
+            .expected = &.{blk: {
+                const str = try std.mem.join(testing.allocator, "", &long_lines);
+                defer testing.allocator.free(str);
+                break :blk try DMP.Diff.fromSlice(testing.allocator, str, .delete);
+            }},
+        },
+    };
+    for (test_cases) |test_case| {
+        var diffs = @constCast(test_case.diffs);
+        defer @constCast(&test_case.lines).deinit();
+        defer for (diffs) |diff| diff.deinit(testing.allocator);
+        defer for (test_case.expected) |diff| diff.deinit(testing.allocator);
+        try DiffPrivate.diffCharsToLinesLineArray(dmp, &diffs, test_case.lines);
+
+        try testing.expectEqual(diffs.len, test_case.expected.len);
+        for (diffs, test_case.expected) |diff, expected| {
+            try testing.expectEqual(expected.operation, diff.operation);
+            try testing.expectEqualStrings(expected.text, diff.text);
+        }
     }
 }
 
