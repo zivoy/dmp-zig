@@ -2,6 +2,30 @@ const DMP = @import("diffmatchpatch.zig");
 const std = @import("std");
 const testing = std.testing;
 
+const MatchPrivate = @import("match_private.zig");
+
+test "match_alphabet" {
+    const Container = u32;
+    var expect: [255]?Container = undefined;
+    var result: [255]?Container = undefined;
+
+    //unique
+    @memset(&expect, null);
+    expect['a'] = 4;
+    expect['b'] = 2;
+    expect['c'] = 1;
+    result = MatchPrivate.match_alphabet(Container, "abc");
+    for (result, expect) |result_el, expect_el| try testing.expectEqual(expect_el, result_el);
+
+    //duplicates
+    @memset(&expect, null);
+    expect['a'] = 37;
+    expect['b'] = 18;
+    expect['c'] = 8;
+    result = MatchPrivate.match_alphabet(Container, "abcaba");
+    for (result, expect) |result_el, expect_el| try testing.expectEqual(expect_el, result_el);
+}
+
 test "match_bitap" {
     var dmp = DMP.init(testing.allocator);
     dmp.match_distance = 100;
