@@ -136,9 +136,9 @@ pub fn diffLinesToCharsMunge(self: Self, text_ref: *[]u8, line_array: *LineArray
 
         const len = std.unicode.utf8CodepointSequenceLength(@intCast(line_value.?)) catch @panic("too many lines");
         // TODO: resize less often by doing capacity
-        if (text.len - codes_len < len or (len > 1 and std.mem.indexOfScalar(u8, hl[1..@min(hl.len, len - 1)], '\n') != null)) {
+        if (codes_len + len > idx + line.len) {
             const old_len = text.len;
-            const new_len = text.len + (len - (text.len - codes_len));
+            const new_len = text.len + (len - ((idx + line.len) - codes_len));
             text.len = new_len;
             // std.debug.print("\nresizing {d} -> {d} ---- \n", .{ lines.buffer.len, new_len });
             if (!self.allocator.resize(text.ptr[0..old_len], new_len)) {
