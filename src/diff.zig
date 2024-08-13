@@ -4,6 +4,8 @@ const utils = @import("utils.zig");
 
 const DiffPrivate = @import("diff_private.zig");
 
+pub const diff_max_duration = std.math.maxInt(u64);
+
 ///Find the differences between two texts.
 ///Run a faster, slightly less optimal diff.
 ///This method allows the 'checklines' of `diffMainStringStringBool` to be optional.
@@ -18,7 +20,7 @@ pub fn diffMainStringStringBool(self: Self, text1: []const u8, text2: []const u8
     if (self.diff_timeout > 0) {
         deadline = @intFromFloat(self.diff_timeout * std.time.ns_per_s);
     } else {
-        deadline = std.math.maxInt(u64);
+        deadline = diff_max_duration;
     }
     return DiffPrivate.diffMainStringStringBoolTimeout(self, text1, text2, check_lines, deadline);
 }
@@ -248,6 +250,8 @@ pub fn diffToDeltaWriter(self: Self, writer: anytype, diffs: []Self.Diff) @TypeO
 ///operations required to transform text1 into text2, compute the full diff.
 pub fn diffFromDelta(self: Self, text1: []const u8, delta: []const u8) ![]Self.Diff {
     var diffs = std.ArrayList(Self.Diff).init(self.allocator);
+    defer diffs.deinit();
+    errdefer for (diffs.items) |diff| diff.deinit(self.allocator);
 
     var pointer: usize = 0;
     var tokens = std.mem.splitScalar(u8, delta, '\t');

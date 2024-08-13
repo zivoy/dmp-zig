@@ -41,8 +41,11 @@ pub fn diffMainStringStringBoolTimeout(self: Self, text1: []const u8, text2: []c
     return diffMainStringStringBoolTimeoutTimer(self, text1, text2, check_lines, ns_time_limit, &timer);
 }
 fn diffMainStringStringBoolTimeoutTimer(self: Self, text1: []const u8, text2: []const u8, check_lines: bool, ns_time_limit: u64, timer: *std.time.Timer) ![]Self.Diff {
-    // Check for equality (speedup).
     var diffs = std.ArrayList(Self.Diff).init(self.allocator);
+    defer diffs.deinit();
+    errdefer for (diffs.items) |diff| diff.deinit(self.allocator);
+
+    // Check for equality (speedup).
     if (std.mem.eql(u8, text1, text2)) {
         if (text1.len != 0) {
             try diffs.append(try Self.Diff.fromSlice(self.allocator, text1, .equal));
@@ -91,6 +94,8 @@ pub fn diffCompute(self: Self, text1: []const u8, text2: []const u8, checklines:
 }
 fn diffComputeTimer(self: Self, text1: []const u8, text2: []const u8, checklines: bool, ns_time_limit: u64, timer: *std.time.Timer) std.mem.Allocator.Error![]Self.Diff {
     var diffs = std.ArrayList(Self.Diff).init(self.allocator);
+    defer diffs.deinit();
+    errdefer for (diffs.items) |diff| diff.deinit(self.allocator);
 
     if (text1.len == 0) {
         // Just add some text (speedup).
@@ -126,15 +131,17 @@ fn diffComputeTimer(self: Self, text1: []const u8, text2: []const u8, checklines
 
     // Check to see if the problem can be split in two.
     if (try diffHalfMatch(self, text1, text2)) |hm| {
-        defer self.allocator.free(hm.common);
+        errdefer self.allocator.free(hm.common);
         // A half-match was found, sort out the return data.
         // Send both pairs off for separate processing.
         const diffs_a = try diffMainStringStringBoolTimeoutTimer(self, hm.text1_prefix, hm.text2_prefix, checklines, ns_time_limit, timer);
+        defer self.allocator.free(diffs_a);
         const diffs_b = try diffMainStringStringBoolTimeoutTimer(self, hm.text1_suffix, hm.text2_suffix, checklines, ns_time_limit, timer);
+        defer self.allocator.free(diffs_b);
 
         // Merge the results.
         try diffs.appendSlice(diffs_a);
-        try diffs.append(try Self.Diff.fromSlice(self.allocator, hm.common, .equal));
+        try diffs.append(Self.Diff{ .text = hm.common, .operation = .equal });
         try diffs.appendSlice(diffs_b);
 
         return diffs.toOwnedSlice();

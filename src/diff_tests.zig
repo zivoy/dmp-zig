@@ -432,7 +432,35 @@ test "levenstein" {
 }
 
 test "bisect" {
-    return error.NoTest;
+    if (true) return error.SkipZigTest;
+    const dmp = DMP.init(testing.allocator);
+
+    const text1: []const u8 = "cat";
+    const text2: []const u8 = "map";
+
+    const TestCase = struct {
+        deadline: u64,
+        expected: []const DMP.Diff,
+    };
+
+    for ([_]TestCase{ .{ .deadline = DMP.diff_max_duration, .expected = &.{
+        try DMP.Diff.fromString(testing.allocator, "c", .delete),
+        try DMP.Diff.fromString(testing.allocator, "m", .insert),
+        try DMP.Diff.fromString(testing.allocator, "a", .equal),
+        try DMP.Diff.fromString(testing.allocator, "t", .delete),
+        try DMP.Diff.fromString(testing.allocator, "p", .insert),
+    } }, .{ .deadline = 0, .expected = &.{
+        try DMP.Diff.fromString(testing.allocator, "cat", .delete),
+        try DMP.Diff.fromString(testing.allocator, "map", .insert),
+    } } }) |test_case| {
+        defer for (test_case.expected) |diff| diff.deinit();
+
+        const actual = try DiffPrivate.diffBisect(dmp, text1, text2, test_case.deadline);
+        defer testing.allocator.free(actual);
+        defer for (actual) |diff| diff.deinit();
+
+        try testing.expectEqualDeep(test_case.expected, actual);
+    }
 }
 
 test "diff main" {
