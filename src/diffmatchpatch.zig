@@ -178,4 +178,5 @@ comptime {
     _ = @import("diff_tests.zig");
     _ = @import("match_test.zig");
     _ = @import("patch_tests.zig");
+    _ = @import("utils.zig");
 }

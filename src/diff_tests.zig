@@ -283,19 +283,19 @@ test "chars to lines" {
 }
 
 test "cleanup merge" {
-    return error.SkipZigTest;
+    return error.NoTest;
 }
 
 test "cleanup semantic lossless" {
-    return error.SkipZigTest;
+    return error.NoTest;
 }
 
 test "cleanup semantic" {
-    return error.SkipZigTest;
+    return error.NoTest;
 }
 
 test "cleanup efficiency" {
-    return error.SkipZigTest;
+    return error.NoTest;
 }
 
 test "pretty html" {
@@ -359,7 +359,7 @@ test "diff text" {
 }
 
 test "to from delta" {
-    return error.SkipZigTest;
+    return error.NoTest;
 }
 
 test "x index" {
@@ -432,9 +432,9 @@ test "levenstein" {
 }
 
 test "bisect" {
-    return error.SkipZigTest;
+    return error.NoTest;
 }
 
 test "diff main" {
-    return error.SkipZigTest;
+    return error.NoTest;
 }
