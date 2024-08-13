@@ -25,7 +25,7 @@ pub fn getIdxOrNull(comptime T: type, arrayList: std.ArrayList(T), idx: usize) ?
 
 ///Emulates the regex
 ///`^@@ -(\d+),?(\d*) \+(\d+),?(\d*) @@$`
-pub fn matchPatchHeader(text: []const u8) !?struct { usize, ?usize, usize, ?usize } {
+pub fn matchPatchHeader(text: []const u8) ?struct { usize, ?usize, usize, ?usize } {
     if (!std.mem.startsWith(u8, text, "@@ -") or
         !std.mem.endsWith(u8, text, " @@"))
         return null;
@@ -36,7 +36,7 @@ pub fn matchPatchHeader(text: []const u8) !?struct { usize, ?usize, usize, ?usiz
     const digits: []const u8 = "0123456789";
 
     const digit1_end_index = std.mem.indexOfNonePos(u8, text, pointer, digits) orelse return null;
-    const digit1 = try std.fmt.parseInt(u8, text[pointer..digit1_end_index], 10);
+    const digit1 = std.fmt.parseInt(usize, text[pointer..digit1_end_index], 10) catch return null;
     pointer = digit1_end_index;
 
     var digit2: ?usize = null;
@@ -44,7 +44,7 @@ pub fn matchPatchHeader(text: []const u8) !?struct { usize, ?usize, usize, ?usiz
         ',' => {
             pointer += 1;
             const digit2_end_index = std.mem.indexOfNonePos(u8, text, pointer, digits) orelse return null;
-            digit2 = try std.fmt.parseInt(u8, text[pointer..digit2_end_index], 10);
+            digit2 = std.fmt.parseInt(usize, text[pointer..digit2_end_index], 10) catch return null;
             pointer = digit2_end_index;
         },
         ' ' => {},
@@ -56,7 +56,7 @@ pub fn matchPatchHeader(text: []const u8) !?struct { usize, ?usize, usize, ?usiz
     pointer += 2;
 
     const digit3_end_index = std.mem.indexOfNonePos(u8, text, pointer, digits) orelse return null;
-    const digit3 = try std.fmt.parseInt(u8, text[pointer..digit3_end_index], 10);
+    const digit3 = std.fmt.parseInt(usize, text[pointer..digit3_end_index], 10) catch return null;
     pointer = digit3_end_index;
 
     var digit4: ?usize = null;
@@ -64,7 +64,7 @@ pub fn matchPatchHeader(text: []const u8) !?struct { usize, ?usize, usize, ?usiz
         ',' => {
             pointer += 1;
             const digit4_end_index = std.mem.indexOfNonePos(u8, text, pointer, digits) orelse return null;
-            digit4 = try std.fmt.parseInt(u8, text[pointer..digit4_end_index], 10);
+            digit4 = std.fmt.parseInt(usize, text[pointer..digit4_end_index], 10) catch return null;
             pointer = digit4_end_index;
         },
         ' ' => {},
@@ -75,6 +75,41 @@ pub fn matchPatchHeader(text: []const u8) !?struct { usize, ?usize, usize, ?usiz
     if (pointer + 3 != text.len) return null;
 
     return .{ digit1, digit2, digit3, digit4 };
+}
+
+///Emulates the regex
+///`\n\r?\n$`;
+pub fn blankLineEnd(text: []const u8) bool {
+    if (text.len < 2) return false;
+
+    //not \n$
+    if (text[text.len - 1] != '\n') return false;
+    //\n\n$
+    if (text[text.len - 2] == '\n') return true;
+
+    //\n\r\n$
+    if (text.len >= 3 and text[text.len - 2] == '\r' and text[text.len - 3] == '\n') return true;
+    return false;
+}
+
+///Emulates the regex
+///`^\r?\n\r?\n`;
+pub fn blankLineStart(text: []const u8) bool {
+    if (text.len < 2) return false;
+
+    // fast paths
+    //^\n\n
+    if (text[0] == '\n' and text[1] == '\n') return true;
+    //^\r\n\r\n
+    if (text.len >= 4 and text[0] == '\r' and text[1] == '\n' and text[2] == '\r' and text[3] == '\n') return true;
+
+    if (text.len < 3) return false;
+    //^\n\r\n
+    if (text[0] == '\n' and text[1] == '\r' and text[2] == '\n') return true;
+    //^\r\n\n
+    if (text[0] == '\r' and text[1] == '\n' and text[2] == '\n') return true;
+
+    return false;
 }
 
 const testing = std.testing;
@@ -93,20 +128,73 @@ test "uri encode decode" {
 }
 
 test "patch regex header" {
-    var result = try matchPatchHeader("Some string");
+    var result = matchPatchHeader("Some string");
     try testing.expect(result == null);
 
-    result = try matchPatchHeader("@@ -32,0 +53 @@");
+    result = matchPatchHeader("@@ -32,0 +53 @@");
     try testing.expect(result != null);
     try testing.expect(result.?[0] == 32);
     try testing.expect(result.?[1] == 0);
     try testing.expect(result.?[2] == 53);
     try testing.expect(result.?[3] == null);
 
-    result = try matchPatchHeader("@@ -15 +20,42 @@");
+    result = matchPatchHeader("@@ -15 +20,42 @@");
     try testing.expect(result != null);
     try testing.expect(result.?[0] == 15);
     try testing.expect(result.?[1] == null);
     try testing.expect(result.?[2] == 20);
     try testing.expect(result.?[3] == 42);
+
+    result = matchPatchHeader("@@ -700,420 +5000,69 @@");
+    try testing.expect(result != null);
+    try testing.expect(result.?[0] == 700);
+    try testing.expect(result.?[1] == 420);
+    try testing.expect(result.?[2] == 5000);
+    try testing.expect(result.?[3] == 69);
+
+    result = matchPatchHeader("@@ -1,0 +3,-4 @@");
+    try testing.expect(result == null);
+}
+
+test "blank line start regex" {
+    try testing.expect(blankLineStart("\n\n"));
+    try testing.expect(blankLineStart("\r\n\n"));
+    try testing.expect(blankLineStart("\n\r\n"));
+    try testing.expect(blankLineStart("\r\n\r\n"));
+
+    try testing.expect(!blankLineStart("r\n\r\n"));
+    try testing.expect(!blankLineStart("\rn\r\n"));
+    try testing.expect(!blankLineStart("\r\nr\n"));
+    try testing.expect(!blankLineStart("\r\n\rn"));
+
+    try testing.expect(!blankLineStart("r\n\n"));
+    try testing.expect(!blankLineStart("\rn\n"));
+    try testing.expect(!blankLineStart("\r\nn"));
+
+    try testing.expect(!blankLineStart("n\r\n"));
+    try testing.expect(!blankLineStart("\nr\n"));
+    try testing.expect(!blankLineStart("\n\rn"));
+
+    try testing.expect(!blankLineStart("n\n"));
+    try testing.expect(!blankLineStart("\nn"));
+
+    try testing.expect(!blankLineStart("something random"));
+    try testing.expect(blankLineStart("\n\nsomething random"));
+    try testing.expect(blankLineStart("\r\n\r\nsomething random"));
+}
+
+test "blank line end regex" {
+    try testing.expect(blankLineEnd("\n\n"));
+    try testing.expect(blankLineEnd("\n\r\n"));
+
+    try testing.expect(!blankLineEnd("n\r\n"));
+    try testing.expect(!blankLineEnd("\nr\n"));
+    try testing.expect(!blankLineEnd("\n\rn"));
+
+    try testing.expect(!blankLineEnd("n\n"));
+    try testing.expect(!blankLineEnd("\nn"));
+
+    try testing.expect(!blankLineEnd("something random"));
+    try testing.expect(blankLineEnd("something random\n\n"));
+    try testing.expect(blankLineEnd("something random\r\n\r\n"));
 }

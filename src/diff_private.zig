@@ -365,8 +365,8 @@ pub fn diffCleanupSemanticScore(self: Self, one: []const u8, two: []const u8) us
         else => false,
     };
 
-    const blank_line1 = line_break1 and (std.mem.endsWith(u8, one, "\n\r\n") or std.mem.endsWith(u8, one, "\n\n"));
-    const blank_line2 = line_break2 and (std.mem.startsWith(u8, two, "\r\n\r\n") or std.mem.startsWith(u8, two, "\n\n") or std.mem.startsWith(u8, two, "\r\n\n") or std.mem.startsWith(u8, two, "\n\r\n")); // second 2 checks are more unlikly but there to keep consistency with the regex
+    const blank_line1 = line_break1 and utils.blankLineEnd(one);
+    const blank_line2 = line_break2 and utils.blankLineStart(two);
 
     if (blank_line1 or blank_line2) {
         // Five points for blank lines.
