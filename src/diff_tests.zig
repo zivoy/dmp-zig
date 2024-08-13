@@ -19,7 +19,148 @@ fn testString(text: []const u8) []u8 {
     return line;
 }
 
-test "diff lines to chars" {
+test "common prefix" {
+    const dmp = DMP.init(testing.allocator);
+    try testing.expectEqual(0, dmp.diffCommonPrefix("abc", "xyz"));
+    try testing.expectEqual(4, dmp.diffCommonPrefix("1234abcdef", "1234xyz"));
+    try testing.expectEqual(4, dmp.diffCommonPrefix("1234", "1234xyz"));
+}
+
+test "common suffix" {
+    const dmp = DMP.init(testing.allocator);
+    try testing.expectEqual(0, dmp.diffCommonSuffix("abc", "xyz"));
+    try testing.expectEqual(4, dmp.diffCommonSuffix("abcdef1234", "xyz1234"));
+    try testing.expectEqual(4, dmp.diffCommonSuffix("1234", "xyz1234"));
+}
+
+test "common overlap" {
+    if (true) return error.SkipZigTest;
+    const dmp = DMP.init(testing.allocator);
+    try testing.expectEqual(0, DiffPrivate.diffCommonOverlap(dmp, "", "abcd"));
+    try testing.expectEqual(3, DiffPrivate.diffCommonOverlap(dmp, "abc", "abcd"));
+    try testing.expectEqual(0, DiffPrivate.diffCommonOverlap(dmp, "123456", "abcd"));
+    try testing.expectEqual(3, DiffPrivate.diffCommonOverlap(dmp, "123456xxx", "xxxabcd"));
+
+    // Some overly clever languages (C#) may treat ligatures as equal to their
+    // component letters.  E.g. U+FB01 == 'fi'
+    try testing.expectEqual(0, DiffPrivate.diffCommonOverlap(dmp, "fi", "\u{fb01}i"));
+}
+
+test "halfmatch" {
+    const TestCase = struct {
+        text1: []const u8,
+        text2: []const u8,
+
+        expected: ?struct {
+            prefix1: []const u8,
+            prefix2: []const u8,
+            suffix1: []const u8,
+            suffix2: []const u8,
+            common: []const u8,
+        },
+    };
+
+    var dmp = DMP.init(testing.allocator);
+    dmp.diff_timeout = 1;
+
+    for ([_]TestCase{
+        .{ .text1 = "1234567890", .text2 = "abcdef", .expected = null },
+        .{ .text1 = "12345", .text2 = "23", .expected = null },
+        .{ .text1 = "1234567890", .text2 = "a345678z", .expected = .{
+            .prefix1 = "12",
+            .suffix1 = "90",
+            .prefix2 = "a",
+            .suffix2 = "z",
+            .common = "345678",
+        } },
+        .{ .text1 = "a345678z", .text2 = "1234567890", .expected = .{
+            .prefix1 = "a",
+            .suffix1 = "z",
+            .prefix2 = "12",
+            .suffix2 = "90",
+            .common = "345678",
+        } },
+        .{ .text1 = "abc56789z", .text2 = "1234567890", .expected = .{
+            .prefix1 = "abc",
+            .suffix1 = "z",
+            .prefix2 = "1234",
+            .suffix2 = "0",
+            .common = "56789",
+        } },
+        .{ .text1 = "a23456xyz", .text2 = "1234567890", .expected = .{
+            .prefix1 = "a",
+            .suffix1 = "xyz",
+            .prefix2 = "1",
+            .suffix2 = "7890",
+            .common = "23456",
+        } },
+        .{ .text1 = "121231234123451234123121", .text2 = "a1234123451234z", .expected = .{
+            .prefix1 = "12123",
+            .suffix1 = "123121",
+            .prefix2 = "a",
+            .suffix2 = "z",
+            .common = "1234123451234",
+        } },
+        .{ .text1 = "x-=-=-=-=-=-=-=-=-=-=-=-=", .text2 = "xx-=-=-=-=-=-=-=", .expected = .{
+            .prefix1 = "",
+            .suffix1 = "-=-=-=-=-=",
+            .prefix2 = "x",
+            .suffix2 = "",
+            .common = "x-=-=-=-=-=-=-=",
+        } },
+        .{ .text1 = "-=-=-=-=-=-=-=-=-=-=-=-=y", .text2 = "-=-=-=-=-=-=-=yy", .expected = .{
+            .prefix1 = "-=-=-=-=-=",
+            .suffix1 = "",
+            .prefix2 = "",
+            .suffix2 = "y",
+            .common = "-=-=-=-=-=-=-=y",
+        } },
+        // Optimal diff would be -q+x=H-i+e=lloHe+Hu=llo-Hew+y not -qHillo+x=HelloHe-w+Hulloy
+        .{ .text1 = "qHilloHelloHew", .text2 = "xHelloHeHulloy", .expected = .{
+            .prefix1 = "qHillo",
+            .suffix1 = "w",
+            .prefix2 = "x",
+            .suffix2 = "Hulloy",
+            .common = "HelloHe",
+        } },
+    }) |test_case| {
+        const actual_n = try DiffPrivate.diffHalfMatch(dmp, test_case.text1, test_case.text2);
+        defer if (actual_n) |actual| testing.allocator.free(actual.common);
+        if (test_case.expected) |expect| {
+            try testing.expect(actual_n != null);
+            const actual = actual_n.?;
+            try testing.expectEqualStrings(expect.prefix1, actual.text1_prefix);
+            try testing.expectEqualStrings(expect.prefix2, actual.text2_prefix);
+            try testing.expectEqualStrings(expect.suffix1, actual.text1_suffix);
+            try testing.expectEqualStrings(expect.suffix2, actual.text2_suffix);
+            try testing.expectEqualStrings(expect.common, actual.common);
+        } else {
+            try testing.expect(actual_n == null);
+        }
+    }
+
+    dmp.diff_timeout = 0;
+    const actual_n = try DiffPrivate.diffHalfMatch(dmp, "qHilloHelloHew", "xHelloHeHulloy");
+    defer if (actual_n) |actual| testing.allocator.free(actual.common);
+    try testing.expect(actual_n == null);
+}
+
+test "bisect split" {
+    if (true) return error.SkipZigTest;
+    const dmp = DMP.init(testing.allocator);
+
+    const text1 = "STUV\x05WX\x05YZ\x05[";
+    const text2 = "WĺĻļ\x05YZ\x05ĽľĿŀZ";
+
+    const diffs = try DiffPrivate.diffBisectSplit(dmp, text1, text2, 7, 6, std.time.ns_per_hour);
+    defer for (diffs) |diff| diff.deinit(testing.allocator);
+    for (diffs) |diff| {
+        try testing.expect(std.unicode.utf8ValidateSlice(diff.text));
+    }
+    // TODO: actual expected outcome
+}
+
+test "lines to chars" {
     const TestCase = struct {
         text1: []u8,
         text2: []u8,
@@ -141,7 +282,123 @@ test "chars to lines" {
     }
 }
 
-test "diff levenstein" {
+test "cleanup merge" {
+    return error.SkipZigTest;
+}
+
+test "cleanup semantic lossless" {
+    return error.SkipZigTest;
+}
+
+test "cleanup semantic" {
+    return error.SkipZigTest;
+}
+
+test "cleanup efficiency" {
+    return error.SkipZigTest;
+}
+
+test "pretty html" {
+    const dmp = DMP.init(testing.allocator);
+
+    const diffs: []DMP.Diff = @constCast(&[_]DMP.Diff{
+        try DMP.Diff.fromString(testing.allocator, "a\n", .equal),
+        try DMP.Diff.fromString(testing.allocator, "<B>b</B>", .delete),
+        try DMP.Diff.fromString(testing.allocator, "c&d", .insert),
+    });
+    const expected_text: []const u8 = "<span>a&para;<br></span><del style=\"background:#ffe6e6;\">&lt;B&gt;b&lt;/B&gt;</del><ins style=\"background:#e6ffe6;\">c&amp;d</ins>";
+
+    defer for (diffs) |diff| diff.deinit(testing.allocator);
+
+    const actual_text = try dmp.diffPrettyHtml(diffs);
+    defer testing.allocator.free(actual_text);
+    try testing.expectEqualStrings(expected_text, actual_text);
+}
+
+test "pretty text" {
+    const dmp = DMP.init(testing.allocator);
+
+    const diffs: []DMP.Diff = @constCast(&[_]DMP.Diff{
+        try DMP.Diff.fromString(testing.allocator, "a\n", .equal),
+        try DMP.Diff.fromString(testing.allocator, "<B>b</B>", .delete),
+        try DMP.Diff.fromString(testing.allocator, "c&d", .insert),
+    });
+    const expected_text: []const u8 = "a\n\x1b[31m<B>b</B>\x1b[0m\x1b[32mc&d\x1b[0m";
+
+    defer for (diffs) |diff| diff.deinit(testing.allocator);
+
+    const actual_text = try dmp.diffPrettyText(diffs);
+    defer testing.allocator.free(actual_text);
+    try testing.expectEqualStrings(expected_text, actual_text);
+}
+
+test "diff text" {
+    const dmp = DMP.init(testing.allocator);
+
+    const diffs: []DMP.Diff = @constCast(&[_]DMP.Diff{
+        try DMP.Diff.fromString(testing.allocator, "jump", .equal),
+        try DMP.Diff.fromString(testing.allocator, "s", .delete),
+        try DMP.Diff.fromString(testing.allocator, "ed", .insert),
+        try DMP.Diff.fromString(testing.allocator, " over ", .equal),
+        try DMP.Diff.fromString(testing.allocator, "the", .delete),
+        try DMP.Diff.fromString(testing.allocator, "a", .insert),
+        try DMP.Diff.fromString(testing.allocator, " lazy", .equal),
+    });
+    const expected_text1: []const u8 = "jumps over the lazy";
+    const expected_text2: []const u8 = "jumped over a lazy";
+
+    defer for (diffs) |diff| diff.deinit(testing.allocator);
+
+    const actual_text1 = try dmp.diffText1(diffs);
+    defer testing.allocator.free(actual_text1);
+    try testing.expectEqualStrings(expected_text1, actual_text1);
+
+    const actual_text2 = try dmp.diffText2(diffs);
+    defer testing.allocator.free(actual_text2);
+    try testing.expectEqualStrings(expected_text2, actual_text2);
+}
+
+test "to from delta" {
+    return error.SkipZigTest;
+}
+
+test "x index" {
+    const TestCase = struct {
+        diffs: []const DMP.Diff,
+        location: usize,
+        expected: usize,
+    };
+
+    const dmp = DMP.init(testing.allocator);
+
+    for ([_]TestCase{
+        .{
+            .diffs = &.{
+                try DMP.Diff.fromString(testing.allocator, "a", .delete),
+                try DMP.Diff.fromString(testing.allocator, "1234", .insert),
+                try DMP.Diff.fromString(testing.allocator, "xyz", .equal),
+            },
+            .location = 2,
+            .expected = 5,
+        },
+        .{
+            .diffs = &.{
+                try DMP.Diff.fromString(testing.allocator, "a", .equal),
+                try DMP.Diff.fromString(testing.allocator, "1234", .delete),
+                try DMP.Diff.fromString(testing.allocator, "xyz", .equal),
+            },
+            .location = 3,
+            .expected = 1,
+        },
+    }) |test_case| {
+        const diffs = @constCast(test_case.diffs);
+        defer for (diffs) |diff| diff.deinit(testing.allocator);
+        const actual = dmp.diffXIndex(diffs, test_case.location);
+        try testing.expectEqual(test_case.expected, actual);
+    }
+}
+
+test "levenstein" {
     const dmp = DMP.init(testing.allocator);
 
     var diffs: []DMP.Diff = undefined;
@@ -172,4 +429,12 @@ test "diff levenstein" {
         defer for (diffs) |diff| diff.deinit(testing.allocator);
         try testing.expectEqual(7, dmp.diffLevenshtein(diffs));
     }
+}
+
+test "bisect" {
+    return error.SkipZigTest;
+}
+
+test "diff main" {
+    return error.SkipZigTest;
 }

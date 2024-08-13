@@ -8,21 +8,23 @@ const DiffPrivate = @import("diff_private.zig");
 ///Run a faster, slightly less optimal diff.
 ///This method allows the 'checklines' of `diffMainStringStringBool` to be optional.
 ///Most of the time checklines is wanted, so default to true.
-pub fn diffMainStringString(self: Self, text1: []const u8, text2: []const u8) []Self.Diff {
+pub fn diffMainStringString(self: Self, text1: []const u8, text2: []const u8) ![]Self.Diff {
     return self.diffMainStringStringBool(text1, text2, true);
 }
 
 ///Find the differences between two texts.
-pub fn diffMainStringStringBool(self: Self, text1: []const u8, text2: []const u8, check_lines: bool) []Self.Diff {
-    _ = self;
-    _ = text1;
-    _ = text2;
-    _ = check_lines;
-    @compileError("Not Implemented");
+pub fn diffMainStringStringBool(self: Self, text1: []const u8, text2: []const u8, check_lines: bool) ![]Self.Diff {
+    var deadline: u64 = undefined;
+    if (self.diff_timeout > 0) {
+        deadline = @intFromFloat(self.diff_timeout * std.time.ns_per_s);
+    } else {
+        deadline = std.math.maxInt(u64);
+    }
+    return DiffPrivate.diffMainStringStringBoolTimeout(self, text1, text2, check_lines, deadline);
 }
 
 ///Determine the common prefix of two strings.
-pub fn diffCommonPrefix(self: Self, text1: [:0]const u8, text2: [:0]const u8) usize {
+pub fn diffCommonPrefix(self: Self, text1: []const u8, text2: []const u8) usize {
     _ = self;
     const n = @min(text1.len, text2.len);
     for (0..n) |i| {
@@ -34,7 +36,7 @@ pub fn diffCommonPrefix(self: Self, text1: [:0]const u8, text2: [:0]const u8) us
 }
 
 ///Determine the common suffix of two strings.
-pub fn diffCommonSuffix(self: Self, text1: [:0]const u8, text2: [:0]const u8) usize {
+pub fn diffCommonSuffix(self: Self, text1: []const u8, text2: []const u8) usize {
     _ = self;
     const n = @min(text1.len, text2.len);
     for (1..n + 1) |i| {
@@ -70,7 +72,7 @@ pub fn diffCleanupEfficiency(self: Self, diffs: *[]Self.Diff) void {
 
 ///Reorder and merge like edit sections.  Merge equalities.
 ///Any edit section can move as long as it doesn't cross an equality.
-pub fn diffCleanupMerge(self: Self, diffs: *[]Self.Diff) void {
+pub fn diffCleanupMerge(self: Self, diffs: *[]Self.Diff) !void {
     _ = self;
     _ = diffs;
     @compileError("Not Implemented");

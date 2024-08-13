@@ -2,7 +2,7 @@ const DMP = @import("diffmatchpatch.zig");
 const std = @import("std");
 const testing = std.testing;
 
-test "patch errors from text" {
+test "errors from text" {
     const TestCase = struct {
         patch: [:0]const u8,
         expectedPatchError: ?DMP.PatchError,
@@ -33,7 +33,7 @@ test "patch errors from text" {
     }
 }
 
-test "patch to text" {
+test "from to text" {
     const dmp = DMP.init(testing.allocator);
     const patch_strs = [_][:0]const u8{
         "@@ -21,18 +22,17 @@\n jump\n-s\n+ed\n  over \n-the\n+a\n  laz\n",
@@ -49,7 +49,7 @@ test "patch to text" {
     }
 }
 
-test "patch add context" {
+test "add context" {
     const TestCase = struct {
         patch: [:0]const u8,
         text: [:0]const u8,
@@ -162,7 +162,7 @@ test "patch make and patch to text" {
     try testing.expectEqualStrings("@@ -1,14 +1,16 @@\n Lorem \n+a \n ipsum do\n@@ -148,13 +148,12 @@\n m libero\n- \n vel.\n", actual);
 }
 
-test "patch split max" {
+test "split max" {
     if (true) return error.SkipZigTest;
     const TestCase = struct {
         text1: [:0]const u8,
@@ -189,7 +189,7 @@ test "patch split max" {
     }
 }
 
-test "patch add padding" {
+test "add padding" {
     if (true) return error.SkipZigTest;
     const TestCase = struct {
         text1: [:0]const u8,

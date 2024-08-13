@@ -4,7 +4,7 @@ const testing = std.testing;
 
 const MatchPrivate = @import("match_private.zig");
 
-test "match_alphabet" {
+test "matchAlphabet" {
     const Container = u32;
     var expect: [255]?Container = undefined;
     var result: [255]?Container = undefined;
@@ -26,7 +26,7 @@ test "match_alphabet" {
     for (result, expect) |result_el, expect_el| try testing.expectEqual(expect_el, result_el);
 }
 
-test "match_bitap" {
+test "matchBitap" {
     var dmp = DMP.init(testing.allocator);
     dmp.match_distance = 100;
     dmp.match_threshold = 0.5;
@@ -103,7 +103,7 @@ test "match_bitap" {
     }
 }
 
-test "match_main" {
+test "match main" {
     var dmp = DMP.init(testing.allocator);
 
     const TestCase = struct {

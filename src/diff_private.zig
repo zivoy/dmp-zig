@@ -1,5 +1,6 @@
 const std = @import("std");
 const Self = @import("diffmatchpatch.zig");
+const utils = @import("utils.zig");
 
 pub const LineArray = struct {
     const S = @This();
@@ -35,35 +36,130 @@ pub const LineArray = struct {
 
 ///Find the differences between two texts.  Simplifies the problem by
 ///stripping any common prefix or suffix off the texts before diffing.
-pub fn diffMainStringStringBoolTimeout(self: Self, text1: []const u8, text2: []const u8, check_lines: bool, deadline: std.time.epoch) []Self.Diff {
-    _ = self;
-    _ = text1;
-    _ = text2;
-    _ = check_lines;
-    _ = deadline;
-    @compileError("Not Implemented");
+pub fn diffMainStringStringBoolTimeout(self: Self, text1: []const u8, text2: []const u8, check_lines: bool, ns_time_limit: u64) ![]Self.Diff {
+    var timer = try std.time.Timer.start();
+    return diffMainStringStringBoolTimeoutTimer(self, text1, text2, check_lines, ns_time_limit, &timer);
+}
+fn diffMainStringStringBoolTimeoutTimer(self: Self, text1: []const u8, text2: []const u8, check_lines: bool, ns_time_limit: u64, timer: *std.time.Timer) ![]Self.Diff {
+    // Check for equality (speedup).
+    var diffs = std.ArrayList(Self.Diff).init(self.allocator);
+    if (std.mem.eql(u8, text1, text2)) {
+        if (text1.len != 0) {
+            try diffs.append(try Self.Diff.fromSlice(self.allocator, text1, .equal));
+        }
+        return diffs.toOwnedSlice();
+    }
+
+    // Trim off common prefix (speedup).
+    var common_length = self.diffCommonPrefix(text1, text2);
+    const common_prefix = text1[0..common_length];
+    var text_chopped1 = text1[common_length..];
+    var text_chopped2 = text2[common_length..];
+
+    // Trim off common suffix (speedup).
+    common_length = self.diffCommonSuffix(text_chopped1, text_chopped2);
+    const common_suffix = text_chopped1[text_chopped1.len - common_length ..];
+    text_chopped1 = text_chopped1[0 .. text_chopped1.len - common_length];
+    text_chopped2 = text_chopped2[0 .. text_chopped2.len - common_length];
+
+    // Compute the diff on the middle block.
+    {
+        const computed_diffs = try diffComputeTimer(self, text_chopped1, text_chopped2, check_lines, ns_time_limit, timer);
+        defer self.allocator.free(computed_diffs);
+        try diffs.appendSlice(computed_diffs);
+    }
+
+    // Restore the prefix and suffix.
+    if (common_prefix.len != 0) {
+        try diffs.insert(0, try Self.Diff.fromSlice(self.allocator, common_prefix, .equal));
+    }
+    if (common_suffix.len != 0) {
+        try diffs.append(try Self.Diff.fromSlice(self.allocator, common_suffix, .equal));
+    }
+
+    var res = try diffs.toOwnedSlice();
+    try self.diffCleanupMerge(&res);
+
+    return res;
 }
 
 ///Find the differences between two texts.  Assumes that the texts do not
 ///have any common prefix or suffix.
-pub fn diffCompute(self: Self, text1: []const u8, text2: []const u8, checklines: bool, deadline: i64) []Self.Diff {
-    _ = self;
-    _ = text1;
-    _ = text2;
-    _ = checklines;
-    _ = deadline;
+pub fn diffCompute(self: Self, text1: []const u8, text2: []const u8, checklines: bool, ns_time_limit: u64) ![]Self.Diff {
+    var timer = try std.time.Timer.start();
+    return diffComputeTimer(self, text1, text2, checklines, ns_time_limit, &timer);
+}
+fn diffComputeTimer(self: Self, text1: []const u8, text2: []const u8, checklines: bool, ns_time_limit: u64, timer: *std.time.Timer) std.mem.Allocator.Error![]Self.Diff {
+    var diffs = std.ArrayList(Self.Diff).init(self.allocator);
 
-    @compileError("Not Implemented");
+    if (text1.len == 0) {
+        // Just add some text (speedup).
+        try diffs.append(try Self.Diff.fromSlice(self.allocator, text2, .insert));
+        return diffs.toOwnedSlice();
+    }
+
+    if (text2.len == 0) {
+        // Just delete some text (speedup).
+        try diffs.append(try Self.Diff.fromSlice(self.allocator, text1, .delete));
+        return diffs.toOwnedSlice();
+    }
+
+    const text1_longer = text1.len > text2.len;
+    const long_text = if (text1_longer) text1 else text2;
+    const short_text = if (text1_longer) text2 else text1;
+    if (std.mem.indexOf(u8, long_text, short_text)) |idx| {
+        // Shorter text is inside the longer text (speedup).
+        const op = if (text1_longer) Self.DiffOperation.delete else Self.DiffOperation.insert;
+        try diffs.append(try Self.Diff.fromSlice(self.allocator, long_text[0..idx], op));
+        try diffs.append(try Self.Diff.fromSlice(self.allocator, short_text, .equal));
+        try diffs.append(try Self.Diff.fromSlice(self.allocator, long_text[idx + short_text.len ..], op));
+        return diffs.toOwnedSlice();
+    }
+
+    if (short_text.len == 1) {
+        // Single character string.
+        // After the previous speedup, the character can't be an equality.
+        try diffs.append(try Self.Diff.fromSlice(self.allocator, text1, .delete));
+        try diffs.append(try Self.Diff.fromSlice(self.allocator, text2, .insert));
+        return diffs.toOwnedSlice();
+    }
+
+    // Check to see if the problem can be split in two.
+    if (try diffHalfMatch(self, text1, text2)) |hm| {
+        defer self.allocator.free(hm.common);
+        // A half-match was found, sort out the return data.
+        // Send both pairs off for separate processing.
+        const diffs_a = try diffMainStringStringBoolTimeoutTimer(self, hm.text1_prefix, hm.text2_prefix, checklines, ns_time_limit, timer);
+        const diffs_b = try diffMainStringStringBoolTimeoutTimer(self, hm.text1_suffix, hm.text2_suffix, checklines, ns_time_limit, timer);
+
+        // Merge the results.
+        try diffs.appendSlice(diffs_a);
+        try diffs.append(try Self.Diff.fromSlice(self.allocator, hm.common, .equal));
+        try diffs.appendSlice(diffs_b);
+
+        return diffs.toOwnedSlice();
+    }
+
+    // Perform a real diff.
+    if (checklines and text1.len > 100 and text2.len > 100) {
+        return diffLineModeTimer(self, text1, text2, ns_time_limit, timer);
+    }
+    return diffBisectTimer(self, text1, text2, ns_time_limit, timer);
 }
 
 ///Do a quick line-level diff on both strings, then rediff the parts for
 ///greater accuracy.
 ///This speedup can produce non-minimal diffs.
-pub fn diffLineMode(self: Self, text1: []const u8, text2: []const u8, deadline: i64) []Self.Diff {
+pub fn diffLineMode(self: Self, text1: []const u8, text2: []const u8, ns_time_limit: u64) ![]Self.Diff {
+    var timer = try std.time.Timer.start();
+    return diffLineModeTimer(self, text1, text2, ns_time_limit, &timer);
+}
+fn diffLineModeTimer(self: Self, text1: []const u8, text2: []const u8, ns_time_limit: u64, timer: *std.time.Timer) ![]Self.Diff {
     _ = self;
     _ = text1;
     _ = text2;
-    _ = deadline;
+    _ = ns_time_limit;
+    _ = timer;
 
     @compileError("Not Implemented");
 }
@@ -71,26 +167,49 @@ pub fn diffLineMode(self: Self, text1: []const u8, text2: []const u8, deadline: 
 ///Find the 'middle snake' of a diff, split the problem in two
 ///and return the recursively constructed diff.
 ///See Myers 1986 paper: An O(ND) Difference Algorithm and Its Variations.
-pub fn diffBisect(self: Self, text1: []const u8, text2: []const u8, deadline: i64) []Self.Diff {
+pub fn diffBisect(self: Self, text1: []const u8, text2: []const u8, ns_time_limit: u64) ![]Self.Diff {
+    var timer = try std.time.Timer.start();
+    return diffBisectTimer(self, text1, text2, ns_time_limit, &timer);
+}
+fn diffBisectTimer(self: Self, text1: []const u8, text2: []const u8, ns_time_limit: u64, timer: *std.time.Timer) ![]Self.Diff {
     _ = self;
     _ = text1;
     _ = text2;
-    _ = deadline;
+    _ = ns_time_limit;
+    _ = timer;
 
     @compileError("Not Implemented");
 }
 
 ///Given the location of the 'middle snake', split the diff in two parts
 ///and recurse.
-pub fn diffBisectSplit(self: Self, text1: []const u8, text2: []const u8, x: usize, y: usize, deadline: i64) []Self.Diff {
-    _ = self;
-    _ = text1;
-    _ = text2;
-    _ = x;
-    _ = y;
-    _ = deadline;
+pub fn diffBisectSplit(self: Self, text1: []const u8, text2: []const u8, x: usize, y: usize, ns_time_limit: u64) ![]Self.Diff {
+    var timer = try std.time.Timer.start();
+    return diffBisectSplitTimer(self, text1, text2, x, y, ns_time_limit, &timer);
+}
+fn diffBisectSplitTimer(self: Self, text1: []const u8, text2: []const u8, x: usize, y: usize, ns_time_limit: u64, timer: *std.time.Timer) ![]Self.Diff {
+    const text1a = text1[0..x];
+    const text2a = text2[0..y];
+    const text1b = text1[x..];
+    const text2b = text2[y..];
 
-    @compileError("Not Implemented");
+    var diffs1 = try diffMainStringStringBoolTimeoutTimer(self, text1a, text2a, false, ns_time_limit, timer);
+    const diffs2 = try diffMainStringStringBoolTimeoutTimer(self, text1b, text2b, false, ns_time_limit, timer);
+
+    const len_start = diffs1.len;
+    const new_len = diffs1.len + diffs2.len;
+    if (!self.allocator.resize(diffs1, new_len)) {
+        //failed to resize
+        const new_diffs = try self.allocator.alloc(Self.Diff, new_len);
+        @memcpy(new_diffs[0..len_start], diffs1);
+        @memset(diffs1, undefined);
+        self.allocator.free(new_diffs);
+        diffs1 = new_diffs;
+    }
+    diffs1.len = new_len;
+    @memcpy(diffs1.ptr[len_start..new_len], diffs2);
+
+    return diffs1;
 }
 
 ///Split two texts into a list of strings.  Reduce the texts to a string of
@@ -134,7 +253,7 @@ pub fn diffLinesToCharsMunge(self: Self, text_ref: *[]u8, line_array: *LineArray
             try line_hash.put(line_array.items.*[line_value.?], line_value.?);
         }
 
-        const len = std.unicode.utf8CodepointSequenceLength(@intCast(line_value.?)) catch @panic("too many lines");
+        const len = std.unicode.utf8CodepointSequenceLength(@intCast(line_value.?)) catch unreachable;
         // TODO: resize less often by doing capacity
         if (codes_len + len > idx + line.len) {
             const old_len = text.len;
@@ -212,7 +331,7 @@ pub fn diffCharsToLines(self: Self, diffs: *[]Self.Diff, line_array: [][]const u
 }
 
 ///Determine if the suffix of one string is the prefix of another.
-pub fn diffCommonOverlap(self: Self, text1: [:0]const u8, text2: []const u8) usize {
+pub fn diffCommonOverlap(self: Self, text1: []const u8, text2: []const u8) usize {
     _ = self;
     _ = text1;
     _ = text2;
@@ -222,7 +341,7 @@ pub fn diffCommonOverlap(self: Self, text1: [:0]const u8, text2: []const u8) usi
 
 ///Do the two texts share a substring which is at least half the length of the longer text?
 ///This speedup can produce non-minimal diffs.
-pub fn diffHalfMatch(self: Self, text1: [:0]const u8, text2: []const u8) std.mem.Allocator.Error!?struct {
+pub fn diffHalfMatch(self: Self, text1: []const u8, text2: []const u8) std.mem.Allocator.Error!?struct {
     text1_prefix: []const u8,
     text1_suffix: []const u8,
     text2_prefix: []const u8,
@@ -234,18 +353,18 @@ pub fn diffHalfMatch(self: Self, text1: [:0]const u8, text2: []const u8) std.mem
         return null;
     }
 
-    const text1_longer = text1.length > text2.length;
+    const text1_longer = text1.len > text2.len;
     const longtext = if (text1_longer) text1 else text2;
     const shorttext = if (text1_longer) text2 else text1;
-    if (longtext.length < 4 or shorttext.length * 2 < longtext.length) {
+    if (longtext.len < 4 or shorttext.len * 2 < longtext.len) {
         return null; // Pointless.
     }
 
     // First check if the second quarter is the seed for a half-match.
-    const hm1 = try diffHalfMatchI(self, longtext, shorttext, (longtext.len + 3) / 4);
+    var hm1 = try diffHalfMatchI(self, longtext, shorttext, (longtext.len + 3) / 4);
     errdefer if (hm1) |hm| self.allocator.free(hm.common);
     // Check again based on the third quarter.
-    const hm2 = try diffHalfMatchI(self, longtext, shorttext, (longtext.len + 1) / 2);
+    var hm2 = try diffHalfMatchI(self, longtext, shorttext, (longtext.len + 1) / 2);
     errdefer if (hm2) |hm| self.allocator.free(hm.common);
 
     if (hm1 == null and hm2 == null) return null;
@@ -262,6 +381,7 @@ pub fn diffHalfMatch(self: Self, text1: [:0]const u8, text2: []const u8) std.mem
         hm2 = null;
     }
 
+    std.debug.assert((hm1 != null or hm2 != null) and !(hm1 != null and hm2 != null));
     if (if (hm1 != null) hm1 else hm2) |hm| {
         return .{
             .common = hm.common,
@@ -271,6 +391,7 @@ pub fn diffHalfMatch(self: Self, text1: [:0]const u8, text2: []const u8) std.mem
             .text2_suffix = if (text1_longer) hm.shorttext_suffix else hm.longtext_suffix,
         };
     }
+    unreachable;
 }
 
 ///Does a substring of shorttext exist within longtext such that the
@@ -293,11 +414,12 @@ pub fn diffHalfMatchI(self: Self, longtext: []const u8, shorttext: []const u8, i
     var best_shorttext_a: []const u8 = undefined;
     var best_shorttext_b: []const u8 = undefined;
 
-    var j: ?usize = null;
+    var j_n: ?usize = null;
     while (blk: {
-        j = std.mem.indexOfPos(u8, shorttext, if (j != null) j.? + 1 else 0, seed);
-        break :blk j != -1;
+        j_n = std.mem.indexOfPos(u8, shorttext, if (j_n != null) j_n.? + 1 else 0, seed);
+        break :blk j_n != null;
     }) {
+        const j = j_n.?;
         const prefix_length = self.diffCommonPrefix(longtext[i..], shorttext[j..]);
         const suffix_length = self.diffCommonSuffix(longtext[0..i], shorttext[0..j]);
         if (best_common_len < suffix_length + prefix_length) {
