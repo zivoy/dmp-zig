@@ -50,8 +50,6 @@ test "patch to text" {
 }
 
 test "patch add context" {
-    if (true) return error.SkipZigTest;
-
     const TestCase = struct {
         patch: [:0]const u8,
         text: [:0]const u8,

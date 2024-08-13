@@ -9,20 +9,20 @@ pub fn patchAddContext(self: Self, patch: *Self.Patch, text: []const u8) std.mem
     if (text.len == 0) return;
 
     var pattern = text[patch.start2 .. patch.start2 + patch.length1];
-    var padding: u32 = 0;
+    var padding: usize = 0;
 
     // Look for the first and last matches of pattern in text. If two different
     // matches are found, increase the pattern length.
     while (std.mem.indexOf(u8, text, pattern) != std.mem.lastIndexOf(u8, text, pattern) and pattern.len < Self.match_max_bits - 2 * self.patch_margin) {
         padding += self.patch_margin;
-        pattern = text[@max(0, patch.start2 - padding)..@min(text.len, patch.start2 + patch.length1 + padding)];
+        pattern = text[if (patch.start2 < padding) 0 else patch.start2 - padding..@min(text.len, patch.start2 + patch.length1 + padding)];
     }
     padding += self.patch_margin;
 
     // add the prefix
-    const prefix = text[@max(0, patch.start2 - padding)..patch.start2];
+    const prefix = text[if (patch.start2 < padding) 0 else patch.start2 - padding..patch.start2];
     if (prefix.len != 0) {
-        try patch.diffs.append(self.allocator, try Self.Diff.fromSlice(self.allocator, prefix, .equal));
+        try patch.diffs.insert(self.allocator, 0, try Self.Diff.fromSlice(self.allocator, prefix, .equal));
     }
 
     // add the suffix
@@ -323,21 +323,20 @@ pub fn patchAddPadding(self: Self, patches: *Self.PatchList) std.mem.Allocator.E
     } else if (padding_length > first_patch.diffs.items[0].text.len) {
         // Grow first equality.
         const extra_length = padding_length - first_patch.diffs.items[0].text.len;
-
         const old_text_len = first_patch.diffs.items[0].text.len;
-
-        if (!self.allocator.resize(first_patch.diffs.items[0].text, padding_length)) {
+        var first_diff = first_patch.diffs.items[0];
+        if (!self.allocator.resize(first_diff.text, padding_length)) {
             const new_first_text = try self.allocator.alloc(u8, padding_length);
-            @memcpy(new_first_text[padding_length - old_text_len ..], first_patch.diffs.items[0].text);
-            @memset(first_patch.diffs.items[0].text, undefined);
-            self.allocator.free(first_patch.diffs.items[0].text);
-            first_patch.diffs.items[0].text = new_first_text;
+            @memcpy(new_first_text[padding_length - old_text_len .. padding_length], first_diff.text[0..old_text_len]);
+            @memset(first_diff.text, undefined);
+            self.allocator.free(first_diff.text);
+            first_diff.text = new_first_text;
         } else {
-            std.mem.copyBackwards(u8, first_patch.diffs.items[0].text[padding_length - old_text_len ..], first_patch.diffs.items[0].text[0..old_text_len]);
+            std.mem.copyBackwards(u8, first_diff.text[padding_length - old_text_len .. padding_length], first_diff.text[0..old_text_len]);
         }
-        first_patch.diffs.items[0].text.len = padding_length;
+        first_diff.text.len = padding_length;
 
-        @memcpy(first_patch.diffs.items[0].text, null_padding[old_text_len..]);
+        @memcpy(first_diff.text, null_padding[old_text_len..]);
 
         first_patch.start1 -= extra_length;
         first_patch.start2 -= extra_length;
@@ -356,16 +355,17 @@ pub fn patchAddPadding(self: Self, patches: *Self.PatchList) std.mem.Allocator.E
         // Grow last equality.
         const extra_length = padding_length - last_patch.diffs.getLast().text.len;
 
-        if (!self.allocator.resize(last_patch.diffs.getLast().text, padding_length)) {
+        var last_diff = last_patch.diffs.getLast();
+        if (!self.allocator.resize(last_diff.text, padding_length)) {
             const new_last_text = try self.allocator.alloc(u8, padding_length);
-            @memcpy(new_last_text, last_patch.diffs.getLast().text);
-            @memset(last_patch.diffs.getLast().text, undefined);
-            self.allocator.free(last_patch.diffs.getLast().text);
+            @memcpy(new_last_text, last_diff.text);
+            @memset(last_diff.text, undefined);
+            self.allocator.free(last_diff.text);
             last_patch.diffs.items[last_patch.diffs.items.len - 1].text = new_last_text;
         }
-        last_patch.diffs.getLast().text.len = padding_length;
+        last_diff.text.len = padding_length;
 
-        @memcpy(last_patch.diffs.getLast().text[padding_length - extra_length ..], null_padding[0..extra_length]);
+        @memcpy(last_diff.text[padding_length - extra_length ..], null_padding[0..extra_length]);
 
         last_patch.length1 += extra_length;
         last_patch.length2 += extra_length;
