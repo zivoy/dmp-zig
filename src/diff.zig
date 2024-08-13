@@ -248,7 +248,7 @@ pub fn diffToDeltaWriter(self: Self, writer: anytype, diffs: []Self.Diff) @TypeO
 
 ///Given the original text1, and an encoded string which describes the
 ///operations required to transform text1 into text2, compute the full diff.
-pub fn diffFromDelta(self: Self, text1: []const u8, delta: []const u8) ![]Self.Diff {
+pub fn diffFromDelta(self: Self, text1: []const u8, delta: []const u8) (Self.DiffError || std.fmt.ParseIntError || std.mem.Allocator.Error)![]Self.Diff {
     var diffs = std.ArrayList(Self.Diff).init(self.allocator);
     defer diffs.deinit();
     errdefer for (diffs.items) |diff| diff.deinit(self.allocator);
@@ -270,14 +270,24 @@ pub fn diffFromDelta(self: Self, text1: []const u8, delta: []const u8) ![]Self.D
                 defer self.allocator.free(param_encoded);
                 @memcpy(param_encoded, param);
                 const line = std.Uri.percentDecodeInPlace(param_encoded);
+                if (!std.unicode.utf8ValidateSlice(line)) return Self.DiffError.DeltaContainsInvalidUTF8;
                 try diffs.append(try Self.Diff.fromSlice(self.allocator, line, .insert));
             },
             '-', '=' => {
                 const count = try std.fmt.parseInt(isize, param, 10);
                 if (count < 0) return Self.DiffError.DeltaContainsNegetiveNumber;
 
-                const line = text1[pointer .. pointer + @as(usize, @intCast(count))];
-                pointer += @intCast(count);
+                if (pointer > text1.len) return Self.DiffError.DeltaLongerThenSource;
+
+                var len: usize = 0;
+                for (0..@intCast(count)) |_| {
+                    if (pointer + len >= text1.len) return Self.DiffError.DeltaLongerThenSource;
+                    len += std.unicode.utf8ByteSequenceLength(text1[pointer + len]) catch return Self.DiffError.DeltaContainsInvalidUTF8;
+                }
+                if (pointer + len > text1.len) return Self.DiffError.DeltaLongerThenSource;
+
+                const line = text1[pointer .. pointer + len];
+                pointer += len;
                 if (token[0] == '=') {
                     try diffs.append(try Self.Diff.fromSlice(self.allocator, line, .equal));
                 } else {
@@ -287,6 +297,7 @@ pub fn diffFromDelta(self: Self, text1: []const u8, delta: []const u8) ![]Self.D
             else => return Self.DiffError.DeltaContainsIlligalOperation,
         }
     }
-    if (pointer != text1.len) return Self.DiffError.DeltaShorterThenSource;
+    if (pointer > text1.len) return Self.DiffError.DeltaLongerThenSource;
+    if (pointer < text1.len) return Self.DiffError.DeltaShorterThenSource;
     return diffs.toOwnedSlice();
 }

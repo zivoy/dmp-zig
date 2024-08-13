@@ -359,7 +359,89 @@ test "diff text" {
 }
 
 test "to from delta" {
-    return error.NoTest;
+    const TestCase = struct {
+        text: []const u8,
+        delta: []const u8,
+
+        expected_error: ?anyerror,
+        expected_diffs: ?[]const DMP.Diff,
+    };
+
+    const dmp = DMP.init(testing.allocator);
+
+    const diffs1: []const DMP.Diff = &.{
+        try DMP.Diff.fromString(testing.allocator, "jump", .equal),
+        try DMP.Diff.fromString(testing.allocator, "s", .delete),
+        try DMP.Diff.fromString(testing.allocator, "ed", .insert),
+        try DMP.Diff.fromString(testing.allocator, " over ", .equal),
+        try DMP.Diff.fromString(testing.allocator, "the", .delete),
+        try DMP.Diff.fromString(testing.allocator, "a", .insert),
+        try DMP.Diff.fromString(testing.allocator, " lazy", .equal),
+        try DMP.Diff.fromString(testing.allocator, "old dog", .insert),
+    };
+    // errdefer for (diffs1) |diff| diff.deinit(testing.allocator);
+
+    const text1 = try dmp.diffText1(@constCast(diffs1));
+    defer testing.allocator.free(text1);
+    try testing.expectEqualStrings("jumps over the lazy", text1);
+
+    const delta1 = try dmp.diffToDelta(@constCast(diffs1));
+    defer testing.allocator.free(delta1);
+    try testing.expectEqualStrings("=4\t-1\t+ed\t=6\t-3\t+a\t=5\t+old dog", delta1);
+
+    const diffs2: []const DMP.Diff = &.{
+        try DMP.Diff.fromString(testing.allocator, "\u{0680} \x00 \t %", .equal),
+        try DMP.Diff.fromString(testing.allocator, "\u{0681} \x01 \n ^", .delete),
+        try DMP.Diff.fromString(testing.allocator, "\u{0682} \x02 \\ |", .insert),
+    };
+    // errdefer for (diffs2) |diff| diff.deinit(testing.allocator);
+
+    const text2 = try dmp.diffText1(@constCast(diffs2));
+    defer testing.allocator.free(text2);
+    try testing.expectEqualStrings("\u{0680} \x00 \t %\u{0681} \x01 \n ^", text2);
+
+    const delta2 = try dmp.diffToDelta(@constCast(diffs2));
+    defer testing.allocator.free(delta2);
+    try testing.expectEqualStrings("=7\t-7\t+%DA%82 %02 %5C %7C", delta2);
+
+    const diffs3: []const DMP.Diff = &.{
+        try DMP.Diff.fromString(testing.allocator, "ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz 0123456789 - _ . ! ~ * ' ( ) ; / ? : @ & = + $ , # ", .insert),
+    };
+    // errdefer for (diffs3) |diff| diff.deinit(testing.allocator);
+
+    const delta3 = try dmp.diffToDelta(@constCast(diffs3));
+    defer testing.allocator.free(delta3);
+    try testing.expectEqualStrings("+ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz 0123456789 - _ . ! ~ * ' ( ) ; / ? : @ & = + $ , # ", delta3);
+
+    for ([_]TestCase{
+        .{ .text = "jumps over the lazyx", .delta = "=4\t-1\t+ed\t=6\t-3\t+a\t=5\t+old dog", .expected_error = DMP.DiffError.DeltaShorterThenSource, .expected_diffs = null },
+        .{ .text = "umps over the lazy", .delta = "=4\t-1\t+ed\t=6\t-3\t+a\t=5\t+old dog", .expected_error = DMP.DiffError.DeltaLongerThenSource, .expected_diffs = null },
+        .{ .text = "", .delta = "+%c3%xy", .expected_error = DMP.DiffError.DeltaContainsInvalidUTF8, .expected_diffs = null },
+        .{ .text = "", .delta = "+%c3xy", .expected_error = DMP.DiffError.DeltaContainsInvalidUTF8, .expected_diffs = null },
+        .{ .text = "", .delta = "a", .expected_error = DMP.DiffError.DeltaContainsIlligalOperation, .expected_diffs = null },
+        .{ .text = "", .delta = "-", .expected_error = std.fmt.ParseIntError.InvalidCharacter, .expected_diffs = null },
+        .{ .text = "", .delta = "--1", .expected_error = DMP.DiffError.DeltaContainsNegetiveNumber, .expected_diffs = null },
+        .{ .text = "", .delta = "", .expected_error = null, .expected_diffs = &.{} },
+        .{ .text = text1, .delta = delta1, .expected_error = null, .expected_diffs = diffs1 },
+        .{ .text = text2, .delta = delta2, .expected_error = null, .expected_diffs = diffs2 },
+        .{ .text = "", .delta = delta3, .expected_error = null, .expected_diffs = diffs3 },
+    }) |test_case| {
+        defer if (test_case.expected_diffs) |diffs| for (diffs) |diff| diff.deinit(testing.allocator);
+        if (dmp.diffFromDelta(test_case.text, test_case.delta)) |diffs| {
+            defer testing.allocator.free(diffs);
+            defer for (diffs) |diff| diff.deinit(testing.allocator);
+
+            try testing.expect(test_case.expected_diffs != null);
+            try testing.expect(test_case.expected_error == null);
+
+            try testing.expectEqual(test_case.expected_diffs.?.len, diffs.len);
+            try testing.expectEqualDeep(test_case.expected_diffs.?, diffs);
+        } else |err| {
+            try testing.expect(test_case.expected_diffs == null);
+            try testing.expect(test_case.expected_error != null);
+            try testing.expectEqual(test_case.expected_error.?, err);
+        }
+    }
 }
 
 test "x index" {

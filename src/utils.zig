@@ -6,7 +6,7 @@ pub fn encodeURI(writer: anytype, string: []const u8) @TypeOf(writer).Error!void
 }
 fn encodeURIValid(chr: u8) bool {
     return switch (chr) {
-        'A'...'Z', 'a'...'z', '0'...'9', '-', '=', ';', '\'', ',', '.', '/', '~', '!', '@', '#', '$', '&', '*', '(', ')', '_', '+', ' ', '?' => true,
+        'A'...'Z', 'a'...'z', '0'...'9', '-', '=', ':', ';', '\'', ',', '.', '/', '~', '!', '@', '#', '$', '&', '*', '(', ')', '_', '+', ' ', '?' => true,
         else => false,
     };
 }
@@ -115,16 +115,27 @@ pub fn blankLineStart(text: []const u8) bool {
 const testing = std.testing;
 
 test "uri encode decode" {
-    const input = "[^A-Za-z0-9%-=;',./~!@#$%&*%(%)_%+ %?]";
-    const expect = "%5B%5EA-Za-z0-9%25-=;',./~!@#$%25&*%25(%25)_%25+ %25?%5D";
-
+    const TestCases = struct {
+        text: []const u8,
+        expect: []const u8,
+    };
     var arraylist = std.ArrayList(u8).init(testing.allocator);
     defer arraylist.deinit();
-    try encodeURI(arraylist.writer(), input);
-    try testing.expectEqualStrings(expect, arraylist.items);
 
-    arraylist.items = std.Uri.percentDecodeInPlace(arraylist.items);
-    try testing.expectEqualStrings(input, arraylist.items);
+    for ([_]TestCases{ .{
+        .text = "[^A-Za-z0-9%-=;',./~!@#$%&*%(%)_%+ %?]",
+        .expect = "%5B%5EA-Za-z0-9%25-=;',./~!@#$%25&*%25(%25)_%25+ %25?%5D",
+    }, .{
+        .text = "ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz 0123456789 - _ . ! ~ * ' ( ) ; / ? : @ & = + $ , # ",
+        .expect = "ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz 0123456789 - _ . ! ~ * ' ( ) ; / ? : @ & = + $ , # ",
+    } }) |test_case| {
+        arraylist.clearRetainingCapacity();
+        try encodeURI(arraylist.writer(), test_case.text);
+        try testing.expectEqualStrings(test_case.expect, arraylist.items);
+
+        arraylist.items = std.Uri.percentDecodeInPlace(arraylist.items);
+        try testing.expectEqualStrings(test_case.text, arraylist.items);
+    }
 }
 
 test "patch regex header" {

@@ -152,14 +152,16 @@ pub const MatchError = error{
 };
 
 pub const PatchError = error{
-    InvalidPatchString,
     InvalidPatchMode,
+    InvalidPatchString,
 };
 
 pub const DiffError = error{
-    DeltaShorterThenSource,
-    DeltaContainsNegetiveNumber,
     DeltaContainsIlligalOperation,
+    DeltaContainsInvalidUTF8,
+    DeltaContainsNegetiveNumber,
+    DeltaLongerThenSource,
+    DeltaShorterThenSource,
 };
 
 // diff ------------------
