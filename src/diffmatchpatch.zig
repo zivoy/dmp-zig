@@ -24,8 +24,8 @@ patch_margin: u16 = 4, // TODO: maybe make some of these comptime known
 allocator: std.mem.Allocator,
 
 ///Container that determins the number of bits in an int
-pub const MatchMaXContainer = u32;
-pub const match_max_bits: usize = @bitSizeOf(MatchMaXContainer);
+pub const MatchMaxContainer = u32;
+pub const match_max_bits: usize = @bitSizeOf(MatchMaxContainer);
 
 pub fn init(allocator: std.mem.Allocator) Self {
     return .{ .allocator = allocator };

@@ -30,7 +30,7 @@ pub fn matchBitap(self: Self, text: []const u8, pattern: []const u8, loc: usize)
     }
 
     // init alphabet
-    const alphabet = MatchPrivate.match_alphabet(Self.MatchMaXContainer, pattern);
+    const alphabet = MatchPrivate.match_alphabet(Self.MatchMaxContainer, pattern);
 
     // Highest score beyond which we give up.
     var score_threshold: f64 = @floatCast(self.match_threshold);

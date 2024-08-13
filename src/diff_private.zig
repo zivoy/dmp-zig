@@ -1,6 +1,38 @@
 const std = @import("std");
 const Self = @import("diffmatchpatch.zig");
 
+pub const LineArray = struct {
+    const S = @This();
+    items: *[][]const u8,
+    array_list: *std.ArrayListUnmanaged([]const u8),
+    allocator: std.mem.Allocator,
+    pub fn init(allocator: std.mem.Allocator) !S {
+        var array_list = try allocator.create(std.ArrayListUnmanaged([]const u8));
+        array_list.* = try std.ArrayListUnmanaged([]const u8).initCapacity(allocator, 0);
+        return .{
+            .items = &array_list.items,
+            .array_list = array_list,
+            .allocator = allocator,
+        };
+    }
+    pub fn fromSlice(allocator: std.mem.Allocator, slice: [][]const u8) !S {
+        var s = try S.init(allocator);
+        for (slice) |item| try s.append(item);
+        return s;
+    }
+    pub fn deinit(self: *S) void {
+        for (self.array_list.items) |item| self.allocator.free(item);
+        self.array_list.deinit(self.allocator);
+        self.allocator.destroy(self.array_list);
+        self.items = undefined;
+    }
+    pub fn append(self: S, text: []const u8) std.mem.Allocator.Error!void {
+        const text_copy = try self.allocator.alloc(u8, text.len);
+        @memcpy(text_copy, text);
+        try self.array_list.append(self.allocator, text_copy);
+    }
+};
+
 ///Find the differences between two texts.  Simplifies the problem by
 ///stripping any common prefix or suffix off the texts before diffing.
 pub fn diffMainStringStringBoolTimeout(self: Self, text1: []const u8, text2: []const u8, check_lines: bool, deadline: std.time.epoch) []Self.Diff {
@@ -60,38 +92,6 @@ pub fn diffBisectSplit(self: Self, text1: []const u8, text2: []const u8, x: usiz
 
     @compileError("Not Implemented");
 }
-
-pub const LineArray = struct {
-    const S = @This();
-    items: *[][]const u8,
-    array_list: *std.ArrayListUnmanaged([]const u8),
-    allocator: std.mem.Allocator,
-    pub fn init(allocator: std.mem.Allocator) !S {
-        var array_list = try allocator.create(std.ArrayListUnmanaged([]const u8));
-        array_list.* = try std.ArrayListUnmanaged([]const u8).initCapacity(allocator, 0);
-        return .{
-            .items = &array_list.items,
-            .array_list = array_list,
-            .allocator = allocator,
-        };
-    }
-    pub fn fromSlice(allocator: std.mem.Allocator, slice: [][]const u8) !S {
-        var s = try S.init(allocator);
-        for (slice) |item| try s.append(item);
-        return s;
-    }
-    pub fn deinit(self: *S) void {
-        for (self.array_list.items) |item| self.allocator.free(item);
-        self.array_list.deinit(self.allocator);
-        self.allocator.destroy(self.array_list);
-        self.items = undefined;
-    }
-    pub fn append(self: S, text: []const u8) std.mem.Allocator.Error!void {
-        const text_copy = try self.allocator.alloc(u8, text.len);
-        @memcpy(text_copy, text);
-        try self.array_list.append(self.allocator, text_copy);
-    }
-};
 
 ///Split two texts into a list of strings.  Reduce the texts to a string of
 ///hashes where each Unicode character represents one line.
