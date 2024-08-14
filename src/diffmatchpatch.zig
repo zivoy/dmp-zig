@@ -177,8 +177,8 @@ pub usingnamespace @import("match.zig");
 pub usingnamespace @import("patch.zig");
 
 comptime {
-    _ = @import("diff_tests.zig");
+    _ = @import("diff_test.zig");
     _ = @import("match_test.zig");
-    _ = @import("patch_tests.zig");
+    _ = @import("patch_test.zig");
     _ = @import("utils.zig");
 }
