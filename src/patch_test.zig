@@ -1,11 +1,16 @@
-const DMP = @import("diffmatchpatch.zig");
+const DMP = @import("diffmatchpatch.zig").DiffMatchPatch;
 const std = @import("std");
+
+const Diff = @import("diff.zig").Diff;
+const Patch = @import("patch.zig").Patch;
+const PatchError = @import("patch.zig").PatchError;
+
 const testing = std.testing;
 
 test "errors from text" {
     const TestCase = struct {
         patch: [:0]const u8,
-        expectedPatchError: ?DMP.PatchError,
+        expectedPatchError: ?PatchError,
     };
 
     const dmp = DMP.init(testing.allocator);
@@ -16,8 +21,8 @@ test "errors from text" {
         .{ .patch = "@@ -1 +1 @@\n-a\n+b\n", .expectedPatchError = null },
         .{ .patch = "@@ -1,3 +0,0 @@\n-abc\n", .expectedPatchError = null },
         .{ .patch = "@@ -0,0 +1,3 @@\n+abc\n", .expectedPatchError = null },
-        .{ .patch = "@@ _0,0 +0,0 @@\n+abc\n", .expectedPatchError = DMP.PatchError.InvalidPatchString },
-        .{ .patch = "Bad\nPatch\n", .expectedPatchError = DMP.PatchError.InvalidPatchMode },
+        .{ .patch = "@@ _0,0 +0,0 @@\n+abc\n", .expectedPatchError = PatchError.InvalidPatchString },
+        .{ .patch = "Bad\nPatch\n", .expectedPatchError = PatchError.InvalidPatchMode },
     }) |test_case| {
         const patches = dmp.patchFromText(test_case.patch) catch |err| {
             if (test_case.expectedPatchError == null) return err;
@@ -255,15 +260,15 @@ test "patch apply" {
 }
 
 test "patch format" {
-    const patch = try DMP.Patch.init(testing.allocator, 20, 21, 18, 17);
-    try patch.diffs.appendSlice(testing.allocator, &[_]DMP.Diff{
-        try DMP.Diff.fromString(testing.allocator, "jump", .equal),
-        try DMP.Diff.fromString(testing.allocator, "s", .delete),
-        try DMP.Diff.fromString(testing.allocator, "ed", .insert),
-        try DMP.Diff.fromString(testing.allocator, " over ", .equal),
-        try DMP.Diff.fromString(testing.allocator, "the", .delete),
-        try DMP.Diff.fromString(testing.allocator, "a", .insert),
-        try DMP.Diff.fromString(testing.allocator, "\nlaz", .equal),
+    const patch = try Patch.init(testing.allocator, 20, 21, 18, 17);
+    try patch.diffs.appendSlice(testing.allocator, &[_]Diff{
+        try Diff.fromString(testing.allocator, "jump", .equal),
+        try Diff.fromString(testing.allocator, "s", .delete),
+        try Diff.fromString(testing.allocator, "ed", .insert),
+        try Diff.fromString(testing.allocator, " over ", .equal),
+        try Diff.fromString(testing.allocator, "the", .delete),
+        try Diff.fromString(testing.allocator, "a", .insert),
+        try Diff.fromString(testing.allocator, "\nlaz", .equal),
     });
 
     defer patch.deinit(testing.allocator);

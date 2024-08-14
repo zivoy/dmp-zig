@@ -1,11 +1,17 @@
 const std = @import("std");
-const Self = @import("diffmatchpatch.zig");
+const DMP = @import("diffmatchpatch.zig");
+
+const Allocator = std.mem.Allocator;
 
 const MatchPrivate = @import("match_private.zig");
 
+pub const MatchError = error{
+    PatternTooLong,
+};
+
 ///Locate the best instance of 'pattern' in 'text' near 'loc'.
 ///Returns null if no match found.
-pub fn matchMain(self: Self, text: []const u8, pattern: []const u8, loc: usize) (Self.MatchError || std.mem.Allocator.Error)!?usize {
+pub fn matchMain(comptime MatchMaxContainer: type, allocator: Allocator, match_distance: u32, match_threshold: f32, text: []const u8, pattern: []const u8, loc: usize) (MatchError || Allocator.Error)!?usize {
     const index = @min(loc, text.len); // max with 0 is not needed since its unsigned
 
     if (std.mem.eql(u8, text, pattern)) {
@@ -19,27 +25,28 @@ pub fn matchMain(self: Self, text: []const u8, pattern: []const u8, loc: usize) 
         return @intCast(index);
     }
     // do fuzzy compare
-    return self.matchBitap(text, pattern, index);
+    return matchBitap(MatchMaxContainer, allocator, match_distance, match_threshold, text, pattern, index);
 }
 
 ///Locate the best instance of 'pattern' in 'text' near 'loc' using the
 ///Bitap algorithm.  Returns null if no match found.
-pub fn matchBitap(self: Self, text: []const u8, pattern: []const u8, loc: usize) (Self.MatchError || std.mem.Allocator.Error)!?usize {
-    if (!(Self.match_max_bits == 0 or pattern.len <= Self.match_max_bits)) {
-        return Self.MatchError.PatternTooLong;
+pub fn matchBitap(comptime MatchMaxContainer: type, allocator: Allocator, match_distance: u32, match_threshold: f32, text: []const u8, pattern: []const u8, loc: usize) (MatchError || Allocator.Error)!?usize {
+    const match_max_bits = @bitSizeOf(MatchMaxContainer);
+    if (!(match_max_bits == 0 or pattern.len <= match_max_bits)) {
+        return MatchError.PatternTooLong;
     }
 
     // init alphabet
-    const alphabet = MatchPrivate.match_alphabet(Self.MatchMaxContainer, pattern);
+    const alphabet = MatchPrivate.match_alphabet(MatchMaxContainer, pattern);
 
     // Highest score beyond which we give up.
-    var score_threshold: f64 = @floatCast(self.match_threshold);
+    var score_threshold: f64 = @floatCast(match_threshold);
     // Is there a nearby exact match? (speedup)
     if (std.mem.indexOfPos(u8, text, loc, pattern)) |idx_best_loc| {
-        score_threshold = @min(score_threshold, MatchPrivate.matchBitapScore(self, 0, @intCast(idx_best_loc), loc, pattern));
+        score_threshold = @min(score_threshold, MatchPrivate.matchBitapScore(match_distance, 0, @intCast(idx_best_loc), loc, pattern));
         // What about in the other direction? (speedup)
         if (std.mem.lastIndexOf(u8, text, pattern)) |last_best_loc| {
-            score_threshold = @min(score_threshold, MatchPrivate.matchBitapScore(self, 0, @intCast(last_best_loc), loc, pattern));
+            score_threshold = @min(score_threshold, MatchPrivate.matchBitapScore(match_distance, 0, @intCast(last_best_loc), loc, pattern));
         }
     }
 
@@ -62,7 +69,7 @@ pub fn matchBitap(self: Self, text: []const u8, pattern: []const u8, loc: usize)
         bin_min = 0;
         bin_mid = bin_max;
         while (bin_min < bin_mid) {
-            if (MatchPrivate.matchBitapScore(self, @intCast(d), loc + bin_mid, loc, pattern) <= score_threshold) {
+            if (MatchPrivate.matchBitapScore(match_distance, @intCast(d), loc + bin_mid, loc, pattern) <= score_threshold) {
                 bin_min = bin_mid;
             } else {
                 bin_max = bin_mid;
@@ -74,7 +81,7 @@ pub fn matchBitap(self: Self, text: []const u8, pattern: []const u8, loc: usize)
         var start: isize = @max(1, @as(i32, @intCast(loc)) - @as(i32, @intCast(bin_mid)) + 1);
         const finish: usize = @min(loc + bin_mid, text.len) + pattern.len;
 
-        rd = try self.allocator.alloc(u32, finish + 2);
+        rd = try allocator.alloc(u32, finish + 2);
 
         rd[finish + 1] = (@as(u32, 1) << @as(u5, @intCast(d))) - 1;
 
@@ -96,7 +103,7 @@ pub fn matchBitap(self: Self, text: []const u8, pattern: []const u8, loc: usize)
                 rd[j] = ((rd[j + 1] << 1) | 1) & char_match | (((last_rd[j + 1] | last_rd[j]) << 1) | 1) | last_rd[j + 1];
             }
             if ((rd[j] & match_mask) != 0) {
-                const score = MatchPrivate.matchBitapScore(self, @intCast(d), j - 1, loc, pattern);
+                const score = MatchPrivate.matchBitapScore(match_distance, @intCast(d), j - 1, loc, pattern);
                 // this match will most likely be better then any existing match, but double check
                 if (score <= score_threshold) {
                     score_threshold = score;
@@ -111,16 +118,16 @@ pub fn matchBitap(self: Self, text: []const u8, pattern: []const u8, loc: usize)
                 }
             }
         }
-        if (MatchPrivate.matchBitapScore(self, @intCast(d + 1), loc, loc, pattern) > score_threshold) {
+        if (MatchPrivate.matchBitapScore(match_distance, @intCast(d + 1), loc, loc, pattern) > score_threshold) {
             // no hope for a better match at greater error levels
             break;
         }
 
-        if (last_rd_set) self.allocator.free(last_rd);
+        if (last_rd_set) allocator.free(last_rd);
         last_rd = rd;
         last_rd_set = true;
     }
-    if (last_rd.ptr != rd.ptr and last_rd_set) self.allocator.free(last_rd);
-    self.allocator.free(rd);
+    if (last_rd.ptr != rd.ptr and last_rd_set) allocator.free(last_rd);
+    allocator.free(rd);
     return best_loc;
 }

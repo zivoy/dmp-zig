@@ -1,4 +1,4 @@
-const DMP = @import("diffmatchpatch.zig");
+const DMP = @import("diffmatchpatch.zig").DiffMatchPatch;
 const std = @import("std");
 const testing = std.testing;
 
