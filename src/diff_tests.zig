@@ -2,21 +2,35 @@ const DMP = @import("diffmatchpatch.zig");
 const DiffPrivate = @import("diff_private.zig");
 const std = @import("std");
 const testing = std.testing;
-//  TODO: tests
-//
-// test "" {
-//     const TestCase = struct {
-//     };
-//
-//     const dmp = DMP.init(testing.allocator);
-//
-//     for ([_]TestCase{})|test_case|{}
-// }
 
 fn testString(text: []const u8) []u8 {
     const line = testing.allocator.alloc(u8, text.len) catch @panic("OOM");
     @memcpy(line, text);
     return line;
+}
+
+fn diffRebuildTexts(diffs: []DMP.Diff) !struct { []const u8, []const u8 } {
+    var text1 = std.ArrayList(u8).init(testing.allocator);
+    defer text1.deinit();
+    var text2 = std.ArrayList(u8).init(testing.allocator);
+    defer text2.deinit();
+
+    for (diffs) |diff| {
+        if (diff.operation != .insert) {
+            try text1.appendSlice(diff.text);
+        }
+        if (diff.operation != .delete) {
+            try text2.appendSlice(diff.text);
+        }
+    }
+
+    return .{ try text1.toOwnedSlice(), try text2.toOwnedSlice() };
+}
+
+fn testDiffList(diffs: []const DMP.Diff) []DMP.Diff {
+    const diff_o = testing.allocator.alloc(DMP.Diff, diffs.len) catch @panic("OOM");
+    @memcpy(diff_o, diffs);
+    return diff_o;
 }
 
 test "common prefix" {
@@ -283,19 +297,278 @@ test "chars to lines" {
 }
 
 test "cleanup merge" {
-    return error.NoTest;
+    if (true) return error.SkipZigTest;
+    const TestCase = struct {
+        diffs: []DMP.Diff,
+        expected: []const DMP.Diff,
+    };
+
+    const dmp = DMP.init(testing.allocator);
+
+    for ([_]TestCase{
+        .{
+            .diffs = testDiffList(&.{}),
+            .expected = &.{},
+        },
+        .{
+            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "a", .equal), try DMP.Diff.fromString(testing.allocator, "b", .delete), try DMP.Diff.fromString(testing.allocator, "c", .insert) }),
+            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "a", .equal), try DMP.Diff.fromString(testing.allocator, "b", .delete), try DMP.Diff.fromString(testing.allocator, "c", .insert) },
+        },
+        .{
+            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "a", .equal), try DMP.Diff.fromString(testing.allocator, "b", .equal), try DMP.Diff.fromString(testing.allocator, "c", .equal) }),
+            .expected = &.{try DMP.Diff.fromString(testing.allocator, "abc", .equal)},
+        },
+        .{
+            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "a", .delete), try DMP.Diff.fromString(testing.allocator, "b", .delete), try DMP.Diff.fromString(testing.allocator, "c", .delete) }),
+            .expected = &.{try DMP.Diff.fromString(testing.allocator, "abc", .delete)},
+        },
+        .{
+            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "a", .insert), try DMP.Diff.fromString(testing.allocator, "b", .insert), try DMP.Diff.fromString(testing.allocator, "c", .insert) }),
+            .expected = &.{try DMP.Diff.fromString(testing.allocator, "abc", .insert)},
+        },
+        .{
+            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "a", .delete), try DMP.Diff.fromString(testing.allocator, "b", .insert), try DMP.Diff.fromString(testing.allocator, "c", .delete), try DMP.Diff.fromString(testing.allocator, "d", .insert), try DMP.Diff.fromString(testing.allocator, "e", .equal), try DMP.Diff.fromString(testing.allocator, "f", .equal) }),
+            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "ac", .delete), try DMP.Diff.fromString(testing.allocator, "bd", .insert), try DMP.Diff.fromString(testing.allocator, "ef", .equal) },
+        },
+        .{
+            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "a", .delete), try DMP.Diff.fromString(testing.allocator, "abc", .insert), try DMP.Diff.fromString(testing.allocator, "dc", .delete) }),
+            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "a", .equal), try DMP.Diff.fromString(testing.allocator, "d", .delete), try DMP.Diff.fromString(testing.allocator, "b", .insert), try DMP.Diff.fromString(testing.allocator, "c", .equal) },
+        },
+        .{
+            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "x", .equal), try DMP.Diff.fromString(testing.allocator, "a", .delete), try DMP.Diff.fromString(testing.allocator, "abc", .insert), try DMP.Diff.fromString(testing.allocator, "dc", .delete), try DMP.Diff.fromString(testing.allocator, "y", .equal) }),
+            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "xa", .equal), try DMP.Diff.fromString(testing.allocator, "d", .delete), try DMP.Diff.fromString(testing.allocator, "b", .insert), try DMP.Diff.fromString(testing.allocator, "cy", .equal) },
+        },
+        .{
+            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "x", .equal), try DMP.Diff.fromString(testing.allocator, "\u{0101}", .delete), try DMP.Diff.fromString(testing.allocator, "\u{0101}bc", .insert), try DMP.Diff.fromString(testing.allocator, "dc", .delete), try DMP.Diff.fromString(testing.allocator, "y", .equal) }),
+            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "x\u{0101}", .equal), try DMP.Diff.fromString(testing.allocator, "d", .delete), try DMP.Diff.fromString(testing.allocator, "b", .insert), try DMP.Diff.fromString(testing.allocator, "cy", .equal) },
+        },
+        .{
+            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "a", .equal), try DMP.Diff.fromString(testing.allocator, "ba", .insert), try DMP.Diff.fromString(testing.allocator, "c", .equal) }),
+            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "ab", .insert), try DMP.Diff.fromString(testing.allocator, "ac", .equal) },
+        },
+        .{
+            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "c", .equal), try DMP.Diff.fromString(testing.allocator, "ab", .insert), try DMP.Diff.fromString(testing.allocator, "a", .equal) }),
+            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "ca", .equal), try DMP.Diff.fromString(testing.allocator, "ba", .insert) },
+        },
+        .{
+            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "a", .equal), try DMP.Diff.fromString(testing.allocator, "b", .delete), try DMP.Diff.fromString(testing.allocator, "c", .equal), try DMP.Diff.fromString(testing.allocator, "ac", .delete), try DMP.Diff.fromString(testing.allocator, "x", .equal) }),
+            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "abc", .delete), try DMP.Diff.fromString(testing.allocator, "acx", .equal) },
+        },
+        .{
+            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "x", .equal), try DMP.Diff.fromString(testing.allocator, "ca", .delete), try DMP.Diff.fromString(testing.allocator, "c", .equal), try DMP.Diff.fromString(testing.allocator, "b", .delete), try DMP.Diff.fromString(testing.allocator, "a", .equal) }),
+            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "xca", .equal), try DMP.Diff.fromString(testing.allocator, "cba", .delete) },
+        },
+    }) |test_case| {
+        var diffs = test_case.diffs;
+        defer testing.allocator.free(diffs);
+        defer for (diffs) |diff| diff.deinit(testing.allocator);
+        defer for (test_case.expected) |diff| diff.deinit(testing.allocator);
+
+        try dmp.diffCleanupMerge(&diffs);
+        try testing.expectEqualDeep(test_case.expected, diffs);
+    }
 }
 
 test "cleanup semantic lossless" {
-    return error.NoTest;
+    if (true) return error.SkipZigTest;
+    const TestCase = struct {
+        diffs: []DMP.Diff,
+        expected: []const DMP.Diff,
+    };
+
+    const dmp = DMP.init(testing.allocator);
+
+    for ([_]TestCase{
+        .{
+            .diffs = testDiffList(&.{}),
+            .expected = &.{},
+        },
+        .{
+            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "AAA\r\n\r\nBBB", .equal), try DMP.Diff.fromString(testing.allocator, "\r\nDDD\r\n\r\nBBB", .insert), try DMP.Diff.fromString(testing.allocator, "\r\nEEE", .equal) }),
+            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "AAA\r\n\r\n", .equal), try DMP.Diff.fromString(testing.allocator, "BBB\r\nDDD\r\n\r\n", .insert), try DMP.Diff.fromString(testing.allocator, "BBB\r\nEEE", .equal) },
+        },
+        .{
+            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "AAA\r\nBBB", .equal), try DMP.Diff.fromString(testing.allocator, " DDD\r\nBBB", .insert), try DMP.Diff.fromString(testing.allocator, " EEE", .equal) }),
+            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "AAA\r\n", .equal), try DMP.Diff.fromString(testing.allocator, "BBB DDD\r\n", .insert), try DMP.Diff.fromString(testing.allocator, "BBB EEE", .equal) },
+        },
+        .{
+            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "The c", .equal), try DMP.Diff.fromString(testing.allocator, "ow and the c", .insert), try DMP.Diff.fromString(testing.allocator, "at.", .equal) }),
+            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "The ", .equal), try DMP.Diff.fromString(testing.allocator, "cow and the ", .insert), try DMP.Diff.fromString(testing.allocator, "cat.", .equal) },
+        },
+        .{
+            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "The-c", .equal), try DMP.Diff.fromString(testing.allocator, "ow-and-the-c", .insert), try DMP.Diff.fromString(testing.allocator, "at.", .equal) }),
+            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "The-", .equal), try DMP.Diff.fromString(testing.allocator, "cow-and-the-", .insert), try DMP.Diff.fromString(testing.allocator, "cat.", .equal) },
+        },
+        .{
+            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "a", .equal), try DMP.Diff.fromString(testing.allocator, "a", .delete), try DMP.Diff.fromString(testing.allocator, "ax", .equal) }),
+            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "a", .delete), try DMP.Diff.fromString(testing.allocator, "aax", .equal) },
+        },
+        .{
+            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "xa", .equal), try DMP.Diff.fromString(testing.allocator, "a", .delete), try DMP.Diff.fromString(testing.allocator, "a", .equal) }),
+            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "xaa", .equal), try DMP.Diff.fromString(testing.allocator, "a", .delete) },
+        },
+        .{
+            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "The xxx. The ", .equal), try DMP.Diff.fromString(testing.allocator, "zzz. The ", .insert), try DMP.Diff.fromString(testing.allocator, "yyy.", .equal) }),
+            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "The xxx.", .equal), try DMP.Diff.fromString(testing.allocator, " The zzz.", .insert), try DMP.Diff.fromString(testing.allocator, " The yyy.", .equal) },
+        },
+        .{
+            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "The ♕. The ", .equal), try DMP.Diff.fromString(testing.allocator, "♔. The ", .insert), try DMP.Diff.fromString(testing.allocator, "♖.", .equal) }),
+            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "The ♕.", .equal), try DMP.Diff.fromString(testing.allocator, " The ♔.", .insert), try DMP.Diff.fromString(testing.allocator, " The ♖.", .equal) },
+        },
+        .{
+            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "♕♕", .equal), try DMP.Diff.fromString(testing.allocator, "♔♔", .insert), try DMP.Diff.fromString(testing.allocator, "♖♖", .equal) }),
+            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "♕♕", .equal), try DMP.Diff.fromString(testing.allocator, "♔♔", .insert), try DMP.Diff.fromString(testing.allocator, "♖♖", .equal) },
+        },
+    }) |test_case| {
+        var diffs = test_case.diffs;
+        defer testing.allocator.free(diffs);
+        defer for (diffs) |diff| diff.deinit(testing.allocator);
+        defer for (test_case.expected) |diff| diff.deinit(testing.allocator);
+
+        dmp.diffCleanupSemanticLossless(&diffs);
+        try testing.expectEqualDeep(test_case.expected, diffs);
+    }
 }
 
 test "cleanup semantic" {
-    return error.NoTest;
+    if (true) return error.SkipZigTest;
+    const TestCase = struct {
+        diffs: []DMP.Diff,
+        expected: []const DMP.Diff,
+    };
+
+    const dmp = DMP.init(testing.allocator);
+
+    for ([_]TestCase{
+        .{
+            .diffs = testDiffList(&.{}),
+            .expected = &.{},
+        },
+        .{
+            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "ab", .delete), try DMP.Diff.fromString(testing.allocator, "cd", .insert), try DMP.Diff.fromString(testing.allocator, "12", .equal), try DMP.Diff.fromString(testing.allocator, "e", .delete) }),
+            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "ab", .delete), try DMP.Diff.fromString(testing.allocator, "cd", .insert), try DMP.Diff.fromString(testing.allocator, "12", .equal), try DMP.Diff.fromString(testing.allocator, "e", .delete) },
+        },
+        .{
+            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "abc", .delete), try DMP.Diff.fromString(testing.allocator, "ABC", .insert), try DMP.Diff.fromString(testing.allocator, "1234", .equal), try DMP.Diff.fromString(testing.allocator, "wxyz", .delete) }),
+            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "abc", .delete), try DMP.Diff.fromString(testing.allocator, "ABC", .insert), try DMP.Diff.fromString(testing.allocator, "1234", .equal), try DMP.Diff.fromString(testing.allocator, "wxyz", .delete) },
+        },
+        .{
+            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "2016-09-01T03:07:1", .equal), try DMP.Diff.fromString(testing.allocator, "5.15", .insert), try DMP.Diff.fromString(testing.allocator, "4", .equal), try DMP.Diff.fromString(testing.allocator, ".", .delete), try DMP.Diff.fromString(testing.allocator, "80", .equal), try DMP.Diff.fromString(testing.allocator, "0", .insert), try DMP.Diff.fromString(testing.allocator, "78", .equal), try DMP.Diff.fromString(testing.allocator, "3074", .delete), try DMP.Diff.fromString(testing.allocator, "1Z", .equal) }),
+            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "2016-09-01T03:07:1", .equal), try DMP.Diff.fromString(testing.allocator, "5.15", .insert), try DMP.Diff.fromString(testing.allocator, "4", .equal), try DMP.Diff.fromString(testing.allocator, ".", .delete), try DMP.Diff.fromString(testing.allocator, "80", .equal), try DMP.Diff.fromString(testing.allocator, "0", .insert), try DMP.Diff.fromString(testing.allocator, "78", .equal), try DMP.Diff.fromString(testing.allocator, "3074", .delete), try DMP.Diff.fromString(testing.allocator, "1Z", .equal) },
+        },
+        .{
+            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "a", .delete), try DMP.Diff.fromString(testing.allocator, "b", .equal), try DMP.Diff.fromString(testing.allocator, "c", .delete) }),
+            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "abc", .delete), try DMP.Diff.fromString(testing.allocator, "b", .insert) },
+        },
+        .{
+            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "ab", .delete), try DMP.Diff.fromString(testing.allocator, "cd", .equal), try DMP.Diff.fromString(testing.allocator, "e", .delete), try DMP.Diff.fromString(testing.allocator, "f", .equal), try DMP.Diff.fromString(testing.allocator, "g", .insert) }),
+            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "abcdef", .delete), try DMP.Diff.fromString(testing.allocator, "cdfg", .insert) },
+        },
+        .{
+            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "1", .insert), try DMP.Diff.fromString(testing.allocator, "A", .equal), try DMP.Diff.fromString(testing.allocator, "B", .delete), try DMP.Diff.fromString(testing.allocator, "2", .insert), try DMP.Diff.fromString(testing.allocator, "_", .equal), try DMP.Diff.fromString(testing.allocator, "1", .insert), try DMP.Diff.fromString(testing.allocator, "A", .equal), try DMP.Diff.fromString(testing.allocator, "B", .delete), try DMP.Diff.fromString(testing.allocator, "2", .insert) }),
+            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "AB_AB", .delete), try DMP.Diff.fromString(testing.allocator, "1A2_1A2", .insert) },
+        },
+        .{
+            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "The c", .equal), try DMP.Diff.fromString(testing.allocator, "ow and the c", .delete), try DMP.Diff.fromString(testing.allocator, "at.", .equal) }),
+            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "The ", .equal), try DMP.Diff.fromString(testing.allocator, "cow and the ", .delete), try DMP.Diff.fromString(testing.allocator, "cat.", .equal) },
+        },
+        .{
+            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "abcxx", .delete), try DMP.Diff.fromString(testing.allocator, "xxdef", .insert) }),
+            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "abcxx", .delete), try DMP.Diff.fromString(testing.allocator, "xxdef", .insert) },
+        },
+        .{
+            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "abcxxx", .delete), try DMP.Diff.fromString(testing.allocator, "xxxdef", .insert) }),
+            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "abc", .delete), try DMP.Diff.fromString(testing.allocator, "xxx", .equal), try DMP.Diff.fromString(testing.allocator, "def", .insert) },
+        },
+        .{
+            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "xxxabc", .delete), try DMP.Diff.fromString(testing.allocator, "defxxx", .insert) }),
+            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "def", .insert), try DMP.Diff.fromString(testing.allocator, "xxx", .equal), try DMP.Diff.fromString(testing.allocator, "abc", .delete) },
+        },
+        .{
+            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "abcd1212", .delete), try DMP.Diff.fromString(testing.allocator, "1212efghi", .insert), try DMP.Diff.fromString(testing.allocator, "----", .equal), try DMP.Diff.fromString(testing.allocator, "A3", .delete), try DMP.Diff.fromString(testing.allocator, "3BC", .insert) }),
+            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "abcd", .delete), try DMP.Diff.fromString(testing.allocator, "1212", .equal), try DMP.Diff.fromString(testing.allocator, "efghi", .insert), try DMP.Diff.fromString(testing.allocator, "----", .equal), try DMP.Diff.fromString(testing.allocator, "A", .delete), try DMP.Diff.fromString(testing.allocator, "3", .equal), try DMP.Diff.fromString(testing.allocator, "BC", .insert) },
+        },
+        .{
+            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "James McCarthy ", .equal), try DMP.Diff.fromString(testing.allocator, "close to ", .delete), try DMP.Diff.fromString(testing.allocator, "sign", .equal), try DMP.Diff.fromString(testing.allocator, "ing", .delete), try DMP.Diff.fromString(testing.allocator, "s", .insert), try DMP.Diff.fromString(testing.allocator, " new ", .equal), try DMP.Diff.fromString(testing.allocator, "E", .delete), try DMP.Diff.fromString(testing.allocator, "fi", .insert), try DMP.Diff.fromString(testing.allocator, "ve", .equal), try DMP.Diff.fromString(testing.allocator, "-yea", .insert), try DMP.Diff.fromString(testing.allocator, "r", .equal), try DMP.Diff.fromString(testing.allocator, "ton", .delete), try DMP.Diff.fromString(testing.allocator, " deal", .equal), try DMP.Diff.fromString(testing.allocator, " at Everton", .insert) }),
+            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "James McCarthy ", .equal), try DMP.Diff.fromString(testing.allocator, "close to ", .delete), try DMP.Diff.fromString(testing.allocator, "sign", .equal), try DMP.Diff.fromString(testing.allocator, "ing", .delete), try DMP.Diff.fromString(testing.allocator, "s", .insert), try DMP.Diff.fromString(testing.allocator, " new ", .equal), try DMP.Diff.fromString(testing.allocator, "five-year deal at ", .insert), try DMP.Diff.fromString(testing.allocator, "Everton", .equal), try DMP.Diff.fromString(testing.allocator, " deal", .delete) },
+        },
+        .{
+            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "星球大戰：新的希望 ", .insert), try DMP.Diff.fromString(testing.allocator, "star wars: ", .equal), try DMP.Diff.fromString(testing.allocator, "episodio iv - un", .delete), try DMP.Diff.fromString(testing.allocator, "a n", .equal), try DMP.Diff.fromString(testing.allocator, "u", .delete), try DMP.Diff.fromString(testing.allocator, "e", .equal), try DMP.Diff.fromString(testing.allocator, "va", .delete), try DMP.Diff.fromString(testing.allocator, "w", .insert), try DMP.Diff.fromString(testing.allocator, " ", .equal), try DMP.Diff.fromString(testing.allocator, "es", .delete), try DMP.Diff.fromString(testing.allocator, "ho", .insert), try DMP.Diff.fromString(testing.allocator, "pe", .equal), try DMP.Diff.fromString(testing.allocator, "ranza", .delete) }),
+            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "星球大戰：新的希望 ", .insert), try DMP.Diff.fromString(testing.allocator, "star wars: ", .equal), try DMP.Diff.fromString(testing.allocator, "episodio iv - una nueva esperanza", .delete), try DMP.Diff.fromString(testing.allocator, "a new hope", .insert) },
+        },
+        .{
+            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "킬러 인 ", .insert), try DMP.Diff.fromString(testing.allocator, "리커버리", .equal), try DMP.Diff.fromString(testing.allocator, " 보이즈", .delete) }),
+            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "킬러 인 ", .insert), try DMP.Diff.fromString(testing.allocator, "리커버리", .equal), try DMP.Diff.fromString(testing.allocator, " 보이즈", .delete) },
+        },
+    }) |test_case| {
+        var diffs = test_case.diffs;
+        defer testing.allocator.free(diffs);
+        defer for (diffs) |diff| diff.deinit(testing.allocator);
+        defer for (test_case.expected) |diff| diff.deinit(testing.allocator);
+
+        dmp.diffCleanupSemantic(&diffs);
+        try testing.expectEqualDeep(test_case.expected, diffs);
+    }
 }
 
 test "cleanup efficiency" {
-    return error.NoTest;
+    if (true) return error.SkipZigTest;
+    const TestCase = struct {
+        diffs: []DMP.Diff,
+        expected: []const DMP.Diff,
+    };
+
+    var dmp = DMP.init(testing.allocator);
+
+    dmp.diff_edit_cost = 4;
+
+    for ([_]TestCase{
+        .{
+            .diffs = testDiffList(&.{}),
+            .expected = &.{},
+        },
+        .{
+            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "ab", .delete), try DMP.Diff.fromString(testing.allocator, "12", .insert), try DMP.Diff.fromString(testing.allocator, "wxyz", .equal), try DMP.Diff.fromString(testing.allocator, "cd", .delete), try DMP.Diff.fromString(testing.allocator, "34", .insert) }),
+            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "ab", .delete), try DMP.Diff.fromString(testing.allocator, "12", .insert), try DMP.Diff.fromString(testing.allocator, "wxyz", .equal), try DMP.Diff.fromString(testing.allocator, "cd", .delete), try DMP.Diff.fromString(testing.allocator, "34", .insert) },
+        },
+        .{
+            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "ab", .delete), try DMP.Diff.fromString(testing.allocator, "12", .insert), try DMP.Diff.fromString(testing.allocator, "xyz", .equal), try DMP.Diff.fromString(testing.allocator, "cd", .delete), try DMP.Diff.fromString(testing.allocator, "34", .insert) }),
+            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "abxyzcd", .delete), try DMP.Diff.fromString(testing.allocator, "12xyz34", .insert) },
+        },
+        .{
+            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "12", .insert), try DMP.Diff.fromString(testing.allocator, "x", .equal), try DMP.Diff.fromString(testing.allocator, "cd", .delete), try DMP.Diff.fromString(testing.allocator, "34", .insert) }),
+            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "xcd", .delete), try DMP.Diff.fromString(testing.allocator, "12x34", .insert) },
+        },
+        .{
+            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "ab", .delete), try DMP.Diff.fromString(testing.allocator, "12", .insert), try DMP.Diff.fromString(testing.allocator, "xy", .equal), try DMP.Diff.fromString(testing.allocator, "34", .insert), try DMP.Diff.fromString(testing.allocator, "z", .equal), try DMP.Diff.fromString(testing.allocator, "cd", .delete), try DMP.Diff.fromString(testing.allocator, "56", .insert) }),
+            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "abxyzcd", .delete), try DMP.Diff.fromString(testing.allocator, "12xy34z56", .insert) },
+        },
+    }) |test_case| {
+        var diffs = test_case.diffs;
+        defer testing.allocator.free(diffs);
+        defer for (diffs) |diff| diff.deinit(testing.allocator);
+        defer for (test_case.expected) |diff| diff.deinit(testing.allocator);
+
+        dmp.diffCleanupEfficiency(&diffs);
+        try testing.expectEqualDeep(test_case.expected, diffs);
+    }
+
+    dmp.diff_edit_cost = 4;
+
+    for ([_]TestCase{
+        .{
+            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "ab", .delete), try DMP.Diff.fromString(testing.allocator, "12", .insert), try DMP.Diff.fromString(testing.allocator, "wxyz", .equal), try DMP.Diff.fromString(testing.allocator, "cd", .delete), try DMP.Diff.fromString(testing.allocator, "34", .insert) }),
+            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "abwxyzcd", .delete), try DMP.Diff.fromString(testing.allocator, "12wxyz34", .insert) },
+        },
+    }) |test_case| {
+        var diffs = test_case.diffs;
+        defer testing.allocator.free(diffs);
+        defer for (diffs) |diff| diff.deinit(testing.allocator);
+        defer for (test_case.expected) |diff| diff.deinit(testing.allocator);
+
+        dmp.diffCleanupEfficiency(&diffs);
+        try testing.expectEqualDeep(test_case.expected, diffs);
+    }
 }
 
 test "pretty html" {
@@ -543,8 +816,282 @@ test "bisect" {
 
         try testing.expectEqualDeep(test_case.expected, actual);
     }
+
+    {
+        const diffs: []DMP.Diff = &.{
+            try DMP.Diff.fromString(testing.allocator, "��", .equal),
+        };
+        defer for (diffs) |diff| diff.deinit();
+
+        const actual = try DiffPrivate.diffBisect(dmp, "\xe0\xe5", "\xe0\xe5", std.time.ns_per_min);
+        defer testing.allocator.free(actual);
+        defer for (actual) |diff| diff.deinit();
+
+        try testing.expectEqualDeep(diffs, actual);
+    }
 }
 
 test "diff main" {
-    return error.NoTest;
+    if (true) return error.SkipZigTest;
+    const TestCase = struct {
+        text1: []const u8,
+        text2: []const u8,
+        expected: []const DMP.Diff,
+    };
+
+    var dmp = DMP.init(testing.allocator);
+
+    // Perform a trivial diff.
+    for ([_]TestCase{ .{
+        .text1 = "",
+        .text2 = "",
+        .expected = &.{},
+    }, .{
+        .text1 = "abc",
+        .text2 = "abc",
+        .expected = &.{try DMP.Diff.fromString(testing.allocator, "abc", .equal)},
+    }, .{
+        .text1 = "abc",
+        .text2 = "ab123c",
+        .expected = &.{ try DMP.Diff.fromString(testing.allocator, "ab", .equal), try DMP.Diff.fromString(testing.allocator, "123", .insert), try DMP.Diff.fromString(testing.allocator, "c", .equal) },
+    }, .{
+        .text1 = "a123bc",
+        .text2 = "abc",
+        .expected = &.{ try DMP.Diff.fromString(testing.allocator, "a", .equal), try DMP.Diff.fromString(testing.allocator, "123", .delete), try DMP.Diff.fromString(testing.allocator, "bc", .equal) },
+    }, .{
+        .text1 = "abc",
+        .text2 = "a123b456c",
+        .expected = &.{ try DMP.Diff.fromString(testing.allocator, "a", .equal), try DMP.Diff.fromString(testing.allocator, "123", .insert), try DMP.Diff.fromString(testing.allocator, "b", .equal), try DMP.Diff.fromString(testing.allocator, "456", .insert), try DMP.Diff.fromString(testing.allocator, "c", .equal) },
+    }, .{
+        .text1 = "a123b456c",
+        .text2 = "abc",
+        .expected = &.{ try DMP.Diff.fromString(testing.allocator, "a", .equal), try DMP.Diff.fromString(testing.allocator, "123", .delete), try DMP.Diff.fromString(testing.allocator, "b", .equal), try DMP.Diff.fromString(testing.allocator, "456", .delete), try DMP.Diff.fromString(testing.allocator, "c", .equal) },
+    } }) |test_case| {
+        defer if (test_case.expected) |diffs| for (diffs) |diff| diff.deinit(testing.allocator);
+
+        const actual = try dmp.diffMainStringStringBool(test_case.text1, test_case.text2, false);
+        defer testing.allocator.free(actual);
+        defer for (actual) |diff| diff.deinit(testing.allocator);
+
+        try testing.expectEqualDeep(test_case.expected, actual);
+    }
+
+    // Perform a real diff and switch off the timeout.
+    dmp.diff_timeout = 0;
+
+    for ([_]TestCase{
+        .{
+            .text1 = "a",
+            .text2 = "b",
+            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "a", .delete), try DMP.Diff.fromString(testing.allocator, "b", .insert) },
+        },
+        .{
+            .text1 = "Apples are a fruit.",
+            .text2 = "Bananas are also fruit.",
+            .expected = &.{
+                try DMP.Diff.fromString(testing.allocator, "Apple", .delete),
+                try DMP.Diff.fromString(testing.allocator, "Banana", .insert),
+                try DMP.Diff.fromString(testing.allocator, "s are a", .equal),
+                try DMP.Diff.fromString(testing.allocator, "lso", .insert),
+                try DMP.Diff.fromString(testing.allocator, " fruit.", .equal),
+            },
+        },
+        .{
+            .text1 = "ax\t",
+            .text2 = "\u{0680}x\u{0000}",
+            .expected = &.{
+                try DMP.Diff.fromString(testing.allocator, "a", .delete),
+                try DMP.Diff.fromString(testing.allocator, "\u{0680}", .insert),
+                try DMP.Diff.fromString(testing.allocator, "x", .equal),
+                try DMP.Diff.fromString(testing.allocator, "\t", .delete),
+                try DMP.Diff.fromString(testing.allocator, "\u{0000}", .insert),
+            },
+        },
+        .{
+            .text1 = "1ayb2",
+            .text2 = "abxab",
+            .expected = &.{
+                try DMP.Diff.fromString(testing.allocator, "1", .delete),
+                try DMP.Diff.fromString(testing.allocator, "a", .equal),
+                try DMP.Diff.fromString(testing.allocator, "y", .delete),
+                try DMP.Diff.fromString(testing.allocator, "b", .equal),
+                try DMP.Diff.fromString(testing.allocator, "2", .delete),
+                try DMP.Diff.fromString(testing.allocator, "xab", .insert),
+            },
+        },
+        .{
+            .text1 = "abcy",
+            .text2 = "xaxcxabc",
+            .expected = &.{
+                try DMP.Diff.fromString(testing.allocator, "xaxcx", .insert),
+                try DMP.Diff.fromString(testing.allocator, "abc", .equal),
+                try DMP.Diff.fromString(testing.allocator, "y", .delete),
+            },
+        },
+        .{
+            .text1 = "ABCDa=bcd=efghijklmnopqrsEFGHIJKLMNOefg",
+            .text2 = "a-bcd-efghijklmnopqrs",
+            .expected = &.{
+                try DMP.Diff.fromString(testing.allocator, "ABCD", .delete),
+                try DMP.Diff.fromString(testing.allocator, "a", .equal),
+                try DMP.Diff.fromString(testing.allocator, "=", .delete),
+                try DMP.Diff.fromString(testing.allocator, "-", .insert),
+                try DMP.Diff.fromString(testing.allocator, "bcd", .equal),
+                try DMP.Diff.fromString(testing.allocator, "=", .delete),
+                try DMP.Diff.fromString(testing.allocator, "-", .insert),
+                try DMP.Diff.fromString(testing.allocator, "efghijklmnopqrs", .equal),
+                try DMP.Diff.fromString(testing.allocator, "EFGHIJKLMNOefg", .delete),
+            },
+        },
+        .{
+            .text1 = "a [[Pennsylvania]] and [[New",
+            .text2 = " and [[Pennsylvania]]",
+            .expected = &.{
+                try DMP.Diff.fromString(testing.allocator, " ", .insert),
+                try DMP.Diff.fromString(testing.allocator, "a", .equal),
+                try DMP.Diff.fromString(testing.allocator, "nd", .insert),
+                try DMP.Diff.fromString(testing.allocator, " [[Pennsylvania]]", .equal),
+                try DMP.Diff.fromString(testing.allocator, " and [[New", .delete),
+            },
+        },
+    }) |test_case| {
+        defer if (test_case.expected) |diffs| for (diffs) |diff| diff.deinit(testing.allocator);
+
+        const actual = try dmp.diffMainStringStringBool(test_case.text1, test_case.text2, false);
+        defer testing.allocator.free(actual);
+        defer for (actual) |diff| diff.deinit(testing.allocator);
+
+        try testing.expectEqualDeep(test_case.expected, actual);
+    }
+
+    {
+        const diffs: []DMP.Diff = &.{
+            try DMP.Diff.fromString(testing.allocator, "��", .equal),
+        };
+        defer for (diffs) |diff| diff.deinit();
+
+        const actual = try dmp.diffMainStringStringBool("\xe0\xe5", "", false);
+        defer testing.allocator.free(actual);
+        defer for (actual) |diff| diff.deinit(testing.allocator);
+
+        try testing.expectEqualDeep(diffs, actual);
+    }
+}
+
+test "diff main with timeout" {
+    if (true) return error.SkipZigTest;
+    var dmp = DMP.init(testing.allocator);
+    dmp.diff_timeout = 0.1; // 100 ms
+
+    // Increase the text lengths by 1024 times to ensure a timeout.
+    const increase = 1 << 10;
+    const a = "`Twas brillig, and the slithy toves\nDid gyre and gimble in the wabe:\nAll mimsy were the borogoves,\nAnd the mome raths outgrabe.\n" ** increase;
+    const b = "I am the very model of a modern major general,\nI've information vegetable, animal, and mineral,\nI know the kings of England, and I quote the fights historical,\nFrom Marathon to Waterloo, in order categorical.\n" ** increase;
+
+    var timer = try std.time.Timer.start();
+    const diffs = try dmp.diffMainStringStringBool(a, b, true);
+    for (diffs) |diff| diff.deinit(testing.allocator);
+    testing.allocator.free(diffs);
+    const delta = timer.read();
+
+    try testing.expect(delta >= dmp.diff_timeout * std.time.ns_per_s);
+
+    // Test that we didn't take forever (be forgiving).
+    // Theoretically this test could fail very occasionally if the
+    // OS task swaps or locks up for a second at the wrong moment.
+    try testing.expect(delta < (dmp.diff_timeout * std.time.ns_per_s * 2));
+}
+
+test "diff main linemode" {
+    if (true) return error.SkipZigTest;
+    const TestCase = struct {
+        text1: []const u8,
+        text2: []const u8,
+    };
+
+    var dmp = DMP.init(testing.allocator);
+    dmp.diff_timeout = 0;
+
+    // Test cases must be at least 100 chars long to pass the cutoff.
+    for ([_]TestCase{
+        .{
+            .text1 = "1234567890\n1234567890\n1234567890\n1234567890\n1234567890\n1234567890\n1234567890\n1234567890\n1234567890\n1234567890\n1234567890\n1234567890\n1234567890\n",
+            .text2 = "abcdefghij\nabcdefghij\nabcdefghij\nabcdefghij\nabcdefghij\nabcdefghij\nabcdefghij\nabcdefghij\nabcdefghij\nabcdefghij\nabcdefghij\nabcdefghij\nabcdefghij\n",
+        },
+        .{
+            .text1 = "1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890",
+            .text2 = "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
+        },
+        .{
+            .text1 = "1234567890\n1234567890\n1234567890\n1234567890\n1234567890\n1234567890\n1234567890\n1234567890\n1234567890\n1234567890\n1234567890\n1234567890\n1234567890\n",
+            .text2 = "abcdefghij\n1234567890\n1234567890\n1234567890\nabcdefghij\n1234567890\n1234567890\n1234567890\nabcdefghij\n1234567890\n1234567890\n1234567890\nabcdefghij\n",
+        },
+    }) |test_case| {
+        const diffs_linemode = try dmp.diffMainStringStringBool(test_case.text1, test_case.text2, true);
+        defer testing.allocator.free(diffs_linemode);
+        defer for (diffs_linemode) |diff| diff.deinit(testing.allocator);
+        const diffs_textmode = try dmp.diffMainStringStringBool(test_case.text1, test_case.text2, false);
+        defer testing.allocator.free(diffs_textmode);
+        defer for (diffs_textmode) |diff| diff.deinit(testing.allocator);
+
+        const linemode_text1, const linemode_text2 = try diffRebuildTexts(diffs_linemode);
+        defer testing.allocator.free(linemode_text1);
+        defer testing.allocator.free(linemode_text2);
+        const textmode_text1, const textmode_text2 = try diffRebuildTexts(diffs_textmode);
+        defer testing.allocator.free(textmode_text1);
+        defer testing.allocator.free(textmode_text2);
+
+        try testing.expectEqualStrings(textmode_text1, linemode_text1);
+        try testing.expectEqualStrings(textmode_text2, linemode_text2);
+    }
+}
+
+test "partial line index" {
+    if (true) return error.SkipZigTest;
+    const dmp = DMP.init(testing.allocator);
+    var text1 = testString(
+        \\line1
+        \\line2
+        \\line3
+        \\line 3
+        \\line 4
+        \\line 5
+        \\line 6
+        \\line 7
+        \\line 8
+        \\line 9
+        \\line 10 text1
+    );
+    defer testing.allocator.free(text1);
+    var text2 = testString(
+        \\line 1
+        \\line 2
+        \\line 3
+        \\line 4
+        \\line 5
+        \\line 6
+        \\line 7
+        \\line 8
+        \\line 9
+        \\line 10 text2
+    );
+    defer testing.allocator.free(text2);
+
+    var linearray = try DiffPrivate.diffLinesToChars(dmp, &text1, &text2);
+    defer linearray.deinit();
+
+    var diffs = try dmp.diffMainStringStringBool(text1, text2, false);
+    defer testing.allocator.free(diffs);
+    defer for (diffs) |diff| diff.deinit(testing.allocator);
+
+    try DiffPrivate.diffCharsToLinesLineArray(dmp, &diffs, linearray);
+
+    const expect: []DMP.Diff = &.{
+        try DMP.Diff.fromString(testing.allocator, "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\n", .equal),
+        try DMP.Diff.fromString(testing.allocator, "line 10 text1", .delete),
+        try DMP.Diff.fromString(testing.allocator, "line 10 text2", .insert),
+    };
+    defer for (expect) |diff| diff.deinit(testing.allocator);
+
+    try testing.expectEqualDeep(expect, diffs);
 }
