@@ -214,28 +214,42 @@ pub fn diffPrettyTextWriter(writer: anytype, diffs: []Diff) @TypeOf(writer).Erro
 
 ///Compute and return the source text (all equalities and deletions).
 pub fn diffText1(allocator: Allocator, diffs: []Diff) Allocator.Error![:0]const u8 {
-    var string = std.ArrayList(u8).init(allocator);
-    defer string.deinit();
-
-    // TODO: count then alloc then copy
+    var len: usize = 0;
     for (diffs) |diff| if (diff.operation != .insert) {
-        try string.appendSlice(diff.text);
+        len += diff.text.len;
     };
 
-    return try string.toOwnedSliceSentinel(0);
+    var string = try allocator.allocSentinel(u8, len, 0);
+    errdefer allocator.free(string);
+
+    var ptr: usize = 0;
+    for (diffs) |diff| if (diff.operation != .insert) {
+        @memcpy(string[ptr .. ptr + diff.text.len], diff.text);
+        ptr += diff.text.len;
+    };
+    std.debug.assert(ptr == len and len == string.len);
+
+    return string;
 }
 
 ///Compute and return the destination text (all equalities and insertions).
 pub fn diffText2(allocator: Allocator, diffs: []Diff) Allocator.Error![:0]const u8 {
-    var string = std.ArrayList(u8).init(allocator);
-    defer string.deinit();
-
-    // TODO: same as above
+    var len: usize = 0;
     for (diffs) |diff| if (diff.operation != .delete) {
-        try string.appendSlice(diff.text);
+        len += diff.text.len;
     };
 
-    return try string.toOwnedSliceSentinel(0);
+    var string = try allocator.allocSentinel(u8, len, 0);
+    errdefer allocator.free(string);
+
+    var ptr: usize = 0;
+    for (diffs) |diff| if (diff.operation != .delete) {
+        @memcpy(string[ptr .. ptr + diff.text.len], diff.text);
+        ptr += diff.text.len;
+    };
+    std.debug.assert(ptr == len and len == string.len);
+
+    return string;
 }
 
 ///Compute the Levenshtein distance; the number of inserted, deleted or substituted characters.

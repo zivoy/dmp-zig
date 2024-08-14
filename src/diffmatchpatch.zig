@@ -46,7 +46,7 @@ fn DiffMatchPatchCustom(MatchMaxContainer: type) type {
         ///how closely the end points of a delete need to match.
         patch_delete_threshold: f32 = 0.5,
         ///Chunk size for context length.
-        patch_margin: u16 = 4, // TODO: maybe make some of these comptime known
+        patch_margin: u16 = 4,
 
         allocator: std.mem.Allocator,
 
@@ -55,6 +55,8 @@ fn DiffMatchPatchCustom(MatchMaxContainer: type) type {
         pub fn init(allocator: std.mem.Allocator) Self {
             return .{ .allocator = allocator };
         }
+
+        // TODO: move doc comments here
 
         // diff ------------------
         pub inline fn diffMainStringString(self: Self, text1: []const u8, text2: []const u8) ![]Diff {
