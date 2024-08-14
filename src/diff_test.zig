@@ -24,7 +24,10 @@ fn diffRebuildTexts(diffs: []DMP.Diff) !struct { []const u8, []const u8 } {
         }
     }
 
-    return .{ try text1.toOwnedSlice(), try text2.toOwnedSlice() };
+    return .{
+        try text1.toOwnedSlice(),
+        try text2.toOwnedSlice(),
+    };
 }
 
 fn testDiffList(diffs: []const DMP.Diff) []DMP.Diff {
@@ -311,52 +314,146 @@ test "cleanup merge" {
             .expected = &.{},
         },
         .{
-            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "a", .equal), try DMP.Diff.fromString(testing.allocator, "b", .delete), try DMP.Diff.fromString(testing.allocator, "c", .insert) }),
-            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "a", .equal), try DMP.Diff.fromString(testing.allocator, "b", .delete), try DMP.Diff.fromString(testing.allocator, "c", .insert) },
+            .diffs = testDiffList(&.{
+                try DMP.Diff.fromString(testing.allocator, "a", .equal),
+                try DMP.Diff.fromString(testing.allocator, "b", .delete),
+                try DMP.Diff.fromString(testing.allocator, "c", .insert),
+            }),
+            .expected = &.{
+                try DMP.Diff.fromString(testing.allocator, "a", .equal),
+                try DMP.Diff.fromString(testing.allocator, "b", .delete),
+                try DMP.Diff.fromString(testing.allocator, "c", .insert),
+            },
         },
         .{
-            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "a", .equal), try DMP.Diff.fromString(testing.allocator, "b", .equal), try DMP.Diff.fromString(testing.allocator, "c", .equal) }),
+            .diffs = testDiffList(&.{
+                try DMP.Diff.fromString(testing.allocator, "a", .equal),
+                try DMP.Diff.fromString(testing.allocator, "b", .equal),
+                try DMP.Diff.fromString(testing.allocator, "c", .equal),
+            }),
             .expected = &.{try DMP.Diff.fromString(testing.allocator, "abc", .equal)},
         },
         .{
-            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "a", .delete), try DMP.Diff.fromString(testing.allocator, "b", .delete), try DMP.Diff.fromString(testing.allocator, "c", .delete) }),
+            .diffs = testDiffList(&.{
+                try DMP.Diff.fromString(testing.allocator, "a", .delete),
+                try DMP.Diff.fromString(testing.allocator, "b", .delete),
+                try DMP.Diff.fromString(testing.allocator, "c", .delete),
+            }),
             .expected = &.{try DMP.Diff.fromString(testing.allocator, "abc", .delete)},
         },
         .{
-            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "a", .insert), try DMP.Diff.fromString(testing.allocator, "b", .insert), try DMP.Diff.fromString(testing.allocator, "c", .insert) }),
+            .diffs = testDiffList(&.{
+                try DMP.Diff.fromString(testing.allocator, "a", .insert),
+                try DMP.Diff.fromString(testing.allocator, "b", .insert),
+                try DMP.Diff.fromString(testing.allocator, "c", .insert),
+            }),
             .expected = &.{try DMP.Diff.fromString(testing.allocator, "abc", .insert)},
         },
         .{
-            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "a", .delete), try DMP.Diff.fromString(testing.allocator, "b", .insert), try DMP.Diff.fromString(testing.allocator, "c", .delete), try DMP.Diff.fromString(testing.allocator, "d", .insert), try DMP.Diff.fromString(testing.allocator, "e", .equal), try DMP.Diff.fromString(testing.allocator, "f", .equal) }),
-            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "ac", .delete), try DMP.Diff.fromString(testing.allocator, "bd", .insert), try DMP.Diff.fromString(testing.allocator, "ef", .equal) },
+            .diffs = testDiffList(&.{
+                try DMP.Diff.fromString(testing.allocator, "a", .delete),
+                try DMP.Diff.fromString(testing.allocator, "b", .insert),
+                try DMP.Diff.fromString(testing.allocator, "c", .delete),
+                try DMP.Diff.fromString(testing.allocator, "d", .insert),
+                try DMP.Diff.fromString(testing.allocator, "e", .equal),
+                try DMP.Diff.fromString(testing.allocator, "f", .equal),
+            }),
+            .expected = &.{
+                try DMP.Diff.fromString(testing.allocator, "ac", .delete),
+                try DMP.Diff.fromString(testing.allocator, "bd", .insert),
+                try DMP.Diff.fromString(testing.allocator, "ef", .equal),
+            },
         },
         .{
-            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "a", .delete), try DMP.Diff.fromString(testing.allocator, "abc", .insert), try DMP.Diff.fromString(testing.allocator, "dc", .delete) }),
-            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "a", .equal), try DMP.Diff.fromString(testing.allocator, "d", .delete), try DMP.Diff.fromString(testing.allocator, "b", .insert), try DMP.Diff.fromString(testing.allocator, "c", .equal) },
+            .diffs = testDiffList(&.{
+                try DMP.Diff.fromString(testing.allocator, "a", .delete),
+                try DMP.Diff.fromString(testing.allocator, "abc", .insert),
+                try DMP.Diff.fromString(testing.allocator, "dc", .delete),
+            }),
+            .expected = &.{
+                try DMP.Diff.fromString(testing.allocator, "a", .equal),
+                try DMP.Diff.fromString(testing.allocator, "d", .delete),
+                try DMP.Diff.fromString(testing.allocator, "b", .insert),
+                try DMP.Diff.fromString(testing.allocator, "c", .equal),
+            },
         },
         .{
-            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "x", .equal), try DMP.Diff.fromString(testing.allocator, "a", .delete), try DMP.Diff.fromString(testing.allocator, "abc", .insert), try DMP.Diff.fromString(testing.allocator, "dc", .delete), try DMP.Diff.fromString(testing.allocator, "y", .equal) }),
-            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "xa", .equal), try DMP.Diff.fromString(testing.allocator, "d", .delete), try DMP.Diff.fromString(testing.allocator, "b", .insert), try DMP.Diff.fromString(testing.allocator, "cy", .equal) },
+            .diffs = testDiffList(&.{
+                try DMP.Diff.fromString(testing.allocator, "x", .equal),
+                try DMP.Diff.fromString(testing.allocator, "a", .delete),
+                try DMP.Diff.fromString(testing.allocator, "abc", .insert),
+                try DMP.Diff.fromString(testing.allocator, "dc", .delete),
+                try DMP.Diff.fromString(testing.allocator, "y", .equal),
+            }),
+            .expected = &.{
+                try DMP.Diff.fromString(testing.allocator, "xa", .equal),
+                try DMP.Diff.fromString(testing.allocator, "d", .delete),
+                try DMP.Diff.fromString(testing.allocator, "b", .insert),
+                try DMP.Diff.fromString(testing.allocator, "cy", .equal),
+            },
         },
         .{
-            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "x", .equal), try DMP.Diff.fromString(testing.allocator, "\u{0101}", .delete), try DMP.Diff.fromString(testing.allocator, "\u{0101}bc", .insert), try DMP.Diff.fromString(testing.allocator, "dc", .delete), try DMP.Diff.fromString(testing.allocator, "y", .equal) }),
-            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "x\u{0101}", .equal), try DMP.Diff.fromString(testing.allocator, "d", .delete), try DMP.Diff.fromString(testing.allocator, "b", .insert), try DMP.Diff.fromString(testing.allocator, "cy", .equal) },
+            .diffs = testDiffList(&.{
+                try DMP.Diff.fromString(testing.allocator, "x", .equal),
+                try DMP.Diff.fromString(testing.allocator, "\u{0101}", .delete),
+                try DMP.Diff.fromString(testing.allocator, "\u{0101}bc", .insert),
+                try DMP.Diff.fromString(testing.allocator, "dc", .delete),
+                try DMP.Diff.fromString(testing.allocator, "y", .equal),
+            }),
+            .expected = &.{
+                try DMP.Diff.fromString(testing.allocator, "x\u{0101}", .equal),
+                try DMP.Diff.fromString(testing.allocator, "d", .delete),
+                try DMP.Diff.fromString(testing.allocator, "b", .insert),
+                try DMP.Diff.fromString(testing.allocator, "cy", .equal),
+            },
         },
         .{
-            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "a", .equal), try DMP.Diff.fromString(testing.allocator, "ba", .insert), try DMP.Diff.fromString(testing.allocator, "c", .equal) }),
-            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "ab", .insert), try DMP.Diff.fromString(testing.allocator, "ac", .equal) },
+            .diffs = testDiffList(&.{
+                try DMP.Diff.fromString(testing.allocator, "a", .equal),
+                try DMP.Diff.fromString(testing.allocator, "ba", .insert),
+                try DMP.Diff.fromString(testing.allocator, "c", .equal),
+            }),
+            .expected = &.{
+                try DMP.Diff.fromString(testing.allocator, "ab", .insert),
+                try DMP.Diff.fromString(testing.allocator, "ac", .equal),
+            },
         },
         .{
-            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "c", .equal), try DMP.Diff.fromString(testing.allocator, "ab", .insert), try DMP.Diff.fromString(testing.allocator, "a", .equal) }),
-            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "ca", .equal), try DMP.Diff.fromString(testing.allocator, "ba", .insert) },
+            .diffs = testDiffList(&.{
+                try DMP.Diff.fromString(testing.allocator, "c", .equal),
+                try DMP.Diff.fromString(testing.allocator, "ab", .insert),
+                try DMP.Diff.fromString(testing.allocator, "a", .equal),
+            }),
+            .expected = &.{
+                try DMP.Diff.fromString(testing.allocator, "ca", .equal),
+                try DMP.Diff.fromString(testing.allocator, "ba", .insert),
+            },
         },
         .{
-            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "a", .equal), try DMP.Diff.fromString(testing.allocator, "b", .delete), try DMP.Diff.fromString(testing.allocator, "c", .equal), try DMP.Diff.fromString(testing.allocator, "ac", .delete), try DMP.Diff.fromString(testing.allocator, "x", .equal) }),
-            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "abc", .delete), try DMP.Diff.fromString(testing.allocator, "acx", .equal) },
+            .diffs = testDiffList(&.{
+                try DMP.Diff.fromString(testing.allocator, "a", .equal),
+                try DMP.Diff.fromString(testing.allocator, "b", .delete),
+                try DMP.Diff.fromString(testing.allocator, "c", .equal),
+                try DMP.Diff.fromString(testing.allocator, "ac", .delete),
+                try DMP.Diff.fromString(testing.allocator, "x", .equal),
+            }),
+            .expected = &.{
+                try DMP.Diff.fromString(testing.allocator, "abc", .delete),
+                try DMP.Diff.fromString(testing.allocator, "acx", .equal),
+            },
         },
         .{
-            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "x", .equal), try DMP.Diff.fromString(testing.allocator, "ca", .delete), try DMP.Diff.fromString(testing.allocator, "c", .equal), try DMP.Diff.fromString(testing.allocator, "b", .delete), try DMP.Diff.fromString(testing.allocator, "a", .equal) }),
-            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "xca", .equal), try DMP.Diff.fromString(testing.allocator, "cba", .delete) },
+            .diffs = testDiffList(&.{
+                try DMP.Diff.fromString(testing.allocator, "x", .equal),
+                try DMP.Diff.fromString(testing.allocator, "ca", .delete),
+                try DMP.Diff.fromString(testing.allocator, "c", .equal),
+                try DMP.Diff.fromString(testing.allocator, "b", .delete),
+                try DMP.Diff.fromString(testing.allocator, "a", .equal),
+            }),
+            .expected = &.{
+                try DMP.Diff.fromString(testing.allocator, "xca", .equal),
+                try DMP.Diff.fromString(testing.allocator, "cba", .delete),
+            },
         },
     }) |test_case| {
         var diffs = test_case.diffs;
@@ -384,40 +481,110 @@ test "cleanup semantic lossless" {
             .expected = &.{},
         },
         .{
-            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "AAA\r\n\r\nBBB", .equal), try DMP.Diff.fromString(testing.allocator, "\r\nDDD\r\n\r\nBBB", .insert), try DMP.Diff.fromString(testing.allocator, "\r\nEEE", .equal) }),
-            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "AAA\r\n\r\n", .equal), try DMP.Diff.fromString(testing.allocator, "BBB\r\nDDD\r\n\r\n", .insert), try DMP.Diff.fromString(testing.allocator, "BBB\r\nEEE", .equal) },
+            .diffs = testDiffList(&.{
+                try DMP.Diff.fromString(testing.allocator, "AAA\r\n\r\nBBB", .equal),
+                try DMP.Diff.fromString(testing.allocator, "\r\nDDD\r\n\r\nBBB", .insert),
+                try DMP.Diff.fromString(testing.allocator, "\r\nEEE", .equal),
+            }),
+            .expected = &.{
+                try DMP.Diff.fromString(testing.allocator, "AAA\r\n\r\n", .equal),
+                try DMP.Diff.fromString(testing.allocator, "BBB\r\nDDD\r\n\r\n", .insert),
+                try DMP.Diff.fromString(testing.allocator, "BBB\r\nEEE", .equal),
+            },
         },
         .{
-            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "AAA\r\nBBB", .equal), try DMP.Diff.fromString(testing.allocator, " DDD\r\nBBB", .insert), try DMP.Diff.fromString(testing.allocator, " EEE", .equal) }),
-            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "AAA\r\n", .equal), try DMP.Diff.fromString(testing.allocator, "BBB DDD\r\n", .insert), try DMP.Diff.fromString(testing.allocator, "BBB EEE", .equal) },
+            .diffs = testDiffList(&.{
+                try DMP.Diff.fromString(testing.allocator, "AAA\r\nBBB", .equal),
+                try DMP.Diff.fromString(testing.allocator, " DDD\r\nBBB", .insert),
+                try DMP.Diff.fromString(testing.allocator, " EEE", .equal),
+            }),
+            .expected = &.{
+                try DMP.Diff.fromString(testing.allocator, "AAA\r\n", .equal),
+                try DMP.Diff.fromString(testing.allocator, "BBB DDD\r\n", .insert),
+                try DMP.Diff.fromString(testing.allocator, "BBB EEE", .equal),
+            },
         },
         .{
-            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "The c", .equal), try DMP.Diff.fromString(testing.allocator, "ow and the c", .insert), try DMP.Diff.fromString(testing.allocator, "at.", .equal) }),
-            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "The ", .equal), try DMP.Diff.fromString(testing.allocator, "cow and the ", .insert), try DMP.Diff.fromString(testing.allocator, "cat.", .equal) },
+            .diffs = testDiffList(&.{
+                try DMP.Diff.fromString(testing.allocator, "The c", .equal),
+                try DMP.Diff.fromString(testing.allocator, "ow and the c", .insert),
+                try DMP.Diff.fromString(testing.allocator, "at.", .equal),
+            }),
+            .expected = &.{
+                try DMP.Diff.fromString(testing.allocator, "The ", .equal),
+                try DMP.Diff.fromString(testing.allocator, "cow and the ", .insert),
+                try DMP.Diff.fromString(testing.allocator, "cat.", .equal),
+            },
         },
         .{
-            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "The-c", .equal), try DMP.Diff.fromString(testing.allocator, "ow-and-the-c", .insert), try DMP.Diff.fromString(testing.allocator, "at.", .equal) }),
-            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "The-", .equal), try DMP.Diff.fromString(testing.allocator, "cow-and-the-", .insert), try DMP.Diff.fromString(testing.allocator, "cat.", .equal) },
+            .diffs = testDiffList(&.{
+                try DMP.Diff.fromString(testing.allocator, "The-c", .equal),
+                try DMP.Diff.fromString(testing.allocator, "ow-and-the-c", .insert),
+                try DMP.Diff.fromString(testing.allocator, "at.", .equal),
+            }),
+            .expected = &.{
+                try DMP.Diff.fromString(testing.allocator, "The-", .equal),
+                try DMP.Diff.fromString(testing.allocator, "cow-and-the-", .insert),
+                try DMP.Diff.fromString(testing.allocator, "cat.", .equal),
+            },
         },
         .{
-            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "a", .equal), try DMP.Diff.fromString(testing.allocator, "a", .delete), try DMP.Diff.fromString(testing.allocator, "ax", .equal) }),
-            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "a", .delete), try DMP.Diff.fromString(testing.allocator, "aax", .equal) },
+            .diffs = testDiffList(&.{
+                try DMP.Diff.fromString(testing.allocator, "a", .equal),
+                try DMP.Diff.fromString(testing.allocator, "a", .delete),
+                try DMP.Diff.fromString(testing.allocator, "ax", .equal),
+            }),
+            .expected = &.{
+                try DMP.Diff.fromString(testing.allocator, "a", .delete),
+                try DMP.Diff.fromString(testing.allocator, "aax", .equal),
+            },
         },
         .{
-            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "xa", .equal), try DMP.Diff.fromString(testing.allocator, "a", .delete), try DMP.Diff.fromString(testing.allocator, "a", .equal) }),
-            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "xaa", .equal), try DMP.Diff.fromString(testing.allocator, "a", .delete) },
+            .diffs = testDiffList(&.{
+                try DMP.Diff.fromString(testing.allocator, "xa", .equal),
+                try DMP.Diff.fromString(testing.allocator, "a", .delete),
+                try DMP.Diff.fromString(testing.allocator, "a", .equal),
+            }),
+            .expected = &.{
+                try DMP.Diff.fromString(testing.allocator, "xaa", .equal),
+                try DMP.Diff.fromString(testing.allocator, "a", .delete),
+            },
         },
         .{
-            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "The xxx. The ", .equal), try DMP.Diff.fromString(testing.allocator, "zzz. The ", .insert), try DMP.Diff.fromString(testing.allocator, "yyy.", .equal) }),
-            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "The xxx.", .equal), try DMP.Diff.fromString(testing.allocator, " The zzz.", .insert), try DMP.Diff.fromString(testing.allocator, " The yyy.", .equal) },
+            .diffs = testDiffList(&.{
+                try DMP.Diff.fromString(testing.allocator, "The xxx. The ", .equal),
+                try DMP.Diff.fromString(testing.allocator, "zzz. The ", .insert),
+                try DMP.Diff.fromString(testing.allocator, "yyy.", .equal),
+            }),
+            .expected = &.{
+                try DMP.Diff.fromString(testing.allocator, "The xxx.", .equal),
+                try DMP.Diff.fromString(testing.allocator, " The zzz.", .insert),
+                try DMP.Diff.fromString(testing.allocator, " The yyy.", .equal),
+            },
         },
         .{
-            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "The ♕. The ", .equal), try DMP.Diff.fromString(testing.allocator, "♔. The ", .insert), try DMP.Diff.fromString(testing.allocator, "♖.", .equal) }),
-            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "The ♕.", .equal), try DMP.Diff.fromString(testing.allocator, " The ♔.", .insert), try DMP.Diff.fromString(testing.allocator, " The ♖.", .equal) },
+            .diffs = testDiffList(&.{
+                try DMP.Diff.fromString(testing.allocator, "The ♕. The ", .equal),
+                try DMP.Diff.fromString(testing.allocator, "♔. The ", .insert),
+                try DMP.Diff.fromString(testing.allocator, "♖.", .equal),
+            }),
+            .expected = &.{
+                try DMP.Diff.fromString(testing.allocator, "The ♕.", .equal),
+                try DMP.Diff.fromString(testing.allocator, " The ♔.", .insert),
+                try DMP.Diff.fromString(testing.allocator, " The ♖.", .equal),
+            },
         },
         .{
-            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "♕♕", .equal), try DMP.Diff.fromString(testing.allocator, "♔♔", .insert), try DMP.Diff.fromString(testing.allocator, "♖♖", .equal) }),
-            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "♕♕", .equal), try DMP.Diff.fromString(testing.allocator, "♔♔", .insert), try DMP.Diff.fromString(testing.allocator, "♖♖", .equal) },
+            .diffs = testDiffList(&.{
+                try DMP.Diff.fromString(testing.allocator, "♕♕", .equal),
+                try DMP.Diff.fromString(testing.allocator, "♔♔", .insert),
+                try DMP.Diff.fromString(testing.allocator, "♖♖", .equal),
+            }),
+            .expected = &.{
+                try DMP.Diff.fromString(testing.allocator, "♕♕", .equal),
+                try DMP.Diff.fromString(testing.allocator, "♔♔", .insert),
+                try DMP.Diff.fromString(testing.allocator, "♖♖", .equal),
+            },
         },
     }) |test_case| {
         var diffs = test_case.diffs;
@@ -445,60 +612,223 @@ test "cleanup semantic" {
             .expected = &.{},
         },
         .{
-            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "ab", .delete), try DMP.Diff.fromString(testing.allocator, "cd", .insert), try DMP.Diff.fromString(testing.allocator, "12", .equal), try DMP.Diff.fromString(testing.allocator, "e", .delete) }),
-            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "ab", .delete), try DMP.Diff.fromString(testing.allocator, "cd", .insert), try DMP.Diff.fromString(testing.allocator, "12", .equal), try DMP.Diff.fromString(testing.allocator, "e", .delete) },
+            .diffs = testDiffList(&.{
+                try DMP.Diff.fromString(testing.allocator, "ab", .delete),
+                try DMP.Diff.fromString(testing.allocator, "cd", .insert),
+                try DMP.Diff.fromString(testing.allocator, "12", .equal),
+                try DMP.Diff.fromString(testing.allocator, "e", .delete),
+            }),
+            .expected = &.{
+                try DMP.Diff.fromString(testing.allocator, "ab", .delete),
+                try DMP.Diff.fromString(testing.allocator, "cd", .insert),
+                try DMP.Diff.fromString(testing.allocator, "12", .equal),
+                try DMP.Diff.fromString(testing.allocator, "e", .delete),
+            },
         },
         .{
-            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "abc", .delete), try DMP.Diff.fromString(testing.allocator, "ABC", .insert), try DMP.Diff.fromString(testing.allocator, "1234", .equal), try DMP.Diff.fromString(testing.allocator, "wxyz", .delete) }),
-            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "abc", .delete), try DMP.Diff.fromString(testing.allocator, "ABC", .insert), try DMP.Diff.fromString(testing.allocator, "1234", .equal), try DMP.Diff.fromString(testing.allocator, "wxyz", .delete) },
+            .diffs = testDiffList(&.{
+                try DMP.Diff.fromString(testing.allocator, "abc", .delete),
+                try DMP.Diff.fromString(testing.allocator, "ABC", .insert),
+                try DMP.Diff.fromString(testing.allocator, "1234", .equal),
+                try DMP.Diff.fromString(testing.allocator, "wxyz", .delete),
+            }),
+            .expected = &.{
+                try DMP.Diff.fromString(testing.allocator, "abc", .delete),
+                try DMP.Diff.fromString(testing.allocator, "ABC", .insert),
+                try DMP.Diff.fromString(testing.allocator, "1234", .equal),
+                try DMP.Diff.fromString(testing.allocator, "wxyz", .delete),
+            },
         },
         .{
-            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "2016-09-01T03:07:1", .equal), try DMP.Diff.fromString(testing.allocator, "5.15", .insert), try DMP.Diff.fromString(testing.allocator, "4", .equal), try DMP.Diff.fromString(testing.allocator, ".", .delete), try DMP.Diff.fromString(testing.allocator, "80", .equal), try DMP.Diff.fromString(testing.allocator, "0", .insert), try DMP.Diff.fromString(testing.allocator, "78", .equal), try DMP.Diff.fromString(testing.allocator, "3074", .delete), try DMP.Diff.fromString(testing.allocator, "1Z", .equal) }),
-            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "2016-09-01T03:07:1", .equal), try DMP.Diff.fromString(testing.allocator, "5.15", .insert), try DMP.Diff.fromString(testing.allocator, "4", .equal), try DMP.Diff.fromString(testing.allocator, ".", .delete), try DMP.Diff.fromString(testing.allocator, "80", .equal), try DMP.Diff.fromString(testing.allocator, "0", .insert), try DMP.Diff.fromString(testing.allocator, "78", .equal), try DMP.Diff.fromString(testing.allocator, "3074", .delete), try DMP.Diff.fromString(testing.allocator, "1Z", .equal) },
+            .diffs = testDiffList(&.{
+                try DMP.Diff.fromString(testing.allocator, "2016-09-01T03:07:1", .equal),
+                try DMP.Diff.fromString(testing.allocator, "5.15", .insert),
+                try DMP.Diff.fromString(testing.allocator, "4", .equal),
+                try DMP.Diff.fromString(testing.allocator, ".", .delete),
+                try DMP.Diff.fromString(testing.allocator, "80", .equal),
+                try DMP.Diff.fromString(testing.allocator, "0", .insert),
+                try DMP.Diff.fromString(testing.allocator, "78", .equal),
+                try DMP.Diff.fromString(testing.allocator, "3074", .delete),
+                try DMP.Diff.fromString(testing.allocator, "1Z", .equal),
+            }),
+            .expected = &.{
+                try DMP.Diff.fromString(testing.allocator, "2016-09-01T03:07:1", .equal),
+                try DMP.Diff.fromString(testing.allocator, "5.15", .insert),
+                try DMP.Diff.fromString(testing.allocator, "4", .equal),
+                try DMP.Diff.fromString(testing.allocator, ".", .delete),
+                try DMP.Diff.fromString(testing.allocator, "80", .equal),
+                try DMP.Diff.fromString(testing.allocator, "0", .insert),
+                try DMP.Diff.fromString(testing.allocator, "78", .equal),
+                try DMP.Diff.fromString(testing.allocator, "3074", .delete),
+                try DMP.Diff.fromString(testing.allocator, "1Z", .equal),
+            },
         },
         .{
-            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "a", .delete), try DMP.Diff.fromString(testing.allocator, "b", .equal), try DMP.Diff.fromString(testing.allocator, "c", .delete) }),
-            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "abc", .delete), try DMP.Diff.fromString(testing.allocator, "b", .insert) },
+            .diffs = testDiffList(&.{
+                try DMP.Diff.fromString(testing.allocator, "a", .delete),
+                try DMP.Diff.fromString(testing.allocator, "b", .equal),
+                try DMP.Diff.fromString(testing.allocator, "c", .delete),
+            }),
+            .expected = &.{
+                try DMP.Diff.fromString(testing.allocator, "abc", .delete),
+                try DMP.Diff.fromString(testing.allocator, "b", .insert),
+            },
         },
         .{
-            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "ab", .delete), try DMP.Diff.fromString(testing.allocator, "cd", .equal), try DMP.Diff.fromString(testing.allocator, "e", .delete), try DMP.Diff.fromString(testing.allocator, "f", .equal), try DMP.Diff.fromString(testing.allocator, "g", .insert) }),
-            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "abcdef", .delete), try DMP.Diff.fromString(testing.allocator, "cdfg", .insert) },
+            .diffs = testDiffList(&.{
+                try DMP.Diff.fromString(testing.allocator, "ab", .delete),
+                try DMP.Diff.fromString(testing.allocator, "cd", .equal),
+                try DMP.Diff.fromString(testing.allocator, "e", .delete),
+                try DMP.Diff.fromString(testing.allocator, "f", .equal),
+                try DMP.Diff.fromString(testing.allocator, "g", .insert),
+            }),
+            .expected = &.{
+                try DMP.Diff.fromString(testing.allocator, "abcdef", .delete),
+                try DMP.Diff.fromString(testing.allocator, "cdfg", .insert),
+            },
         },
         .{
-            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "1", .insert), try DMP.Diff.fromString(testing.allocator, "A", .equal), try DMP.Diff.fromString(testing.allocator, "B", .delete), try DMP.Diff.fromString(testing.allocator, "2", .insert), try DMP.Diff.fromString(testing.allocator, "_", .equal), try DMP.Diff.fromString(testing.allocator, "1", .insert), try DMP.Diff.fromString(testing.allocator, "A", .equal), try DMP.Diff.fromString(testing.allocator, "B", .delete), try DMP.Diff.fromString(testing.allocator, "2", .insert) }),
-            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "AB_AB", .delete), try DMP.Diff.fromString(testing.allocator, "1A2_1A2", .insert) },
+            .diffs = testDiffList(&.{
+                try DMP.Diff.fromString(testing.allocator, "1", .insert),
+                try DMP.Diff.fromString(testing.allocator, "A", .equal),
+                try DMP.Diff.fromString(testing.allocator, "B", .delete),
+                try DMP.Diff.fromString(testing.allocator, "2", .insert),
+                try DMP.Diff.fromString(testing.allocator, "_", .equal),
+                try DMP.Diff.fromString(testing.allocator, "1", .insert),
+                try DMP.Diff.fromString(testing.allocator, "A", .equal),
+                try DMP.Diff.fromString(testing.allocator, "B", .delete),
+                try DMP.Diff.fromString(testing.allocator, "2", .insert),
+            }),
+            .expected = &.{
+                try DMP.Diff.fromString(testing.allocator, "AB_AB", .delete),
+                try DMP.Diff.fromString(testing.allocator, "1A2_1A2", .insert),
+            },
         },
         .{
-            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "The c", .equal), try DMP.Diff.fromString(testing.allocator, "ow and the c", .delete), try DMP.Diff.fromString(testing.allocator, "at.", .equal) }),
-            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "The ", .equal), try DMP.Diff.fromString(testing.allocator, "cow and the ", .delete), try DMP.Diff.fromString(testing.allocator, "cat.", .equal) },
+            .diffs = testDiffList(&.{
+                try DMP.Diff.fromString(testing.allocator, "The c", .equal),
+                try DMP.Diff.fromString(testing.allocator, "ow and the c", .delete),
+                try DMP.Diff.fromString(testing.allocator, "at.", .equal),
+            }),
+            .expected = &.{
+                try DMP.Diff.fromString(testing.allocator, "The ", .equal),
+                try DMP.Diff.fromString(testing.allocator, "cow and the ", .delete),
+                try DMP.Diff.fromString(testing.allocator, "cat.", .equal),
+            },
         },
         .{
-            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "abcxx", .delete), try DMP.Diff.fromString(testing.allocator, "xxdef", .insert) }),
-            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "abcxx", .delete), try DMP.Diff.fromString(testing.allocator, "xxdef", .insert) },
+            .diffs = testDiffList(&.{
+                try DMP.Diff.fromString(testing.allocator, "abcxx", .delete),
+                try DMP.Diff.fromString(testing.allocator, "xxdef", .insert),
+            }),
+            .expected = &.{
+                try DMP.Diff.fromString(testing.allocator, "abcxx", .delete),
+                try DMP.Diff.fromString(testing.allocator, "xxdef", .insert),
+            },
         },
         .{
-            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "abcxxx", .delete), try DMP.Diff.fromString(testing.allocator, "xxxdef", .insert) }),
-            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "abc", .delete), try DMP.Diff.fromString(testing.allocator, "xxx", .equal), try DMP.Diff.fromString(testing.allocator, "def", .insert) },
+            .diffs = testDiffList(&.{
+                try DMP.Diff.fromString(testing.allocator, "abcxxx", .delete),
+                try DMP.Diff.fromString(testing.allocator, "xxxdef", .insert),
+            }),
+            .expected = &.{
+                try DMP.Diff.fromString(testing.allocator, "abc", .delete),
+                try DMP.Diff.fromString(testing.allocator, "xxx", .equal),
+                try DMP.Diff.fromString(testing.allocator, "def", .insert),
+            },
         },
         .{
-            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "xxxabc", .delete), try DMP.Diff.fromString(testing.allocator, "defxxx", .insert) }),
-            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "def", .insert), try DMP.Diff.fromString(testing.allocator, "xxx", .equal), try DMP.Diff.fromString(testing.allocator, "abc", .delete) },
+            .diffs = testDiffList(&.{
+                try DMP.Diff.fromString(testing.allocator, "xxxabc", .delete),
+                try DMP.Diff.fromString(testing.allocator, "defxxx", .insert),
+            }),
+            .expected = &.{
+                try DMP.Diff.fromString(testing.allocator, "def", .insert),
+                try DMP.Diff.fromString(testing.allocator, "xxx", .equal),
+                try DMP.Diff.fromString(testing.allocator, "abc", .delete),
+            },
         },
         .{
-            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "abcd1212", .delete), try DMP.Diff.fromString(testing.allocator, "1212efghi", .insert), try DMP.Diff.fromString(testing.allocator, "----", .equal), try DMP.Diff.fromString(testing.allocator, "A3", .delete), try DMP.Diff.fromString(testing.allocator, "3BC", .insert) }),
-            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "abcd", .delete), try DMP.Diff.fromString(testing.allocator, "1212", .equal), try DMP.Diff.fromString(testing.allocator, "efghi", .insert), try DMP.Diff.fromString(testing.allocator, "----", .equal), try DMP.Diff.fromString(testing.allocator, "A", .delete), try DMP.Diff.fromString(testing.allocator, "3", .equal), try DMP.Diff.fromString(testing.allocator, "BC", .insert) },
+            .diffs = testDiffList(&.{
+                try DMP.Diff.fromString(testing.allocator, "abcd1212", .delete),
+                try DMP.Diff.fromString(testing.allocator, "1212efghi", .insert),
+                try DMP.Diff.fromString(testing.allocator, "----", .equal),
+                try DMP.Diff.fromString(testing.allocator, "A3", .delete),
+                try DMP.Diff.fromString(testing.allocator, "3BC", .insert),
+            }),
+            .expected = &.{
+                try DMP.Diff.fromString(testing.allocator, "abcd", .delete),
+                try DMP.Diff.fromString(testing.allocator, "1212", .equal),
+                try DMP.Diff.fromString(testing.allocator, "efghi", .insert),
+                try DMP.Diff.fromString(testing.allocator, "----", .equal),
+                try DMP.Diff.fromString(testing.allocator, "A", .delete),
+                try DMP.Diff.fromString(testing.allocator, "3", .equal),
+                try DMP.Diff.fromString(testing.allocator, "BC", .insert),
+            },
         },
         .{
-            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "James McCarthy ", .equal), try DMP.Diff.fromString(testing.allocator, "close to ", .delete), try DMP.Diff.fromString(testing.allocator, "sign", .equal), try DMP.Diff.fromString(testing.allocator, "ing", .delete), try DMP.Diff.fromString(testing.allocator, "s", .insert), try DMP.Diff.fromString(testing.allocator, " new ", .equal), try DMP.Diff.fromString(testing.allocator, "E", .delete), try DMP.Diff.fromString(testing.allocator, "fi", .insert), try DMP.Diff.fromString(testing.allocator, "ve", .equal), try DMP.Diff.fromString(testing.allocator, "-yea", .insert), try DMP.Diff.fromString(testing.allocator, "r", .equal), try DMP.Diff.fromString(testing.allocator, "ton", .delete), try DMP.Diff.fromString(testing.allocator, " deal", .equal), try DMP.Diff.fromString(testing.allocator, " at Everton", .insert) }),
-            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "James McCarthy ", .equal), try DMP.Diff.fromString(testing.allocator, "close to ", .delete), try DMP.Diff.fromString(testing.allocator, "sign", .equal), try DMP.Diff.fromString(testing.allocator, "ing", .delete), try DMP.Diff.fromString(testing.allocator, "s", .insert), try DMP.Diff.fromString(testing.allocator, " new ", .equal), try DMP.Diff.fromString(testing.allocator, "five-year deal at ", .insert), try DMP.Diff.fromString(testing.allocator, "Everton", .equal), try DMP.Diff.fromString(testing.allocator, " deal", .delete) },
+            .diffs = testDiffList(&.{
+                try DMP.Diff.fromString(testing.allocator, "James McCarthy ", .equal),
+                try DMP.Diff.fromString(testing.allocator, "close to ", .delete),
+                try DMP.Diff.fromString(testing.allocator, "sign", .equal),
+                try DMP.Diff.fromString(testing.allocator, "ing", .delete),
+                try DMP.Diff.fromString(testing.allocator, "s", .insert),
+                try DMP.Diff.fromString(testing.allocator, " new ", .equal),
+                try DMP.Diff.fromString(testing.allocator, "E", .delete),
+                try DMP.Diff.fromString(testing.allocator, "fi", .insert),
+                try DMP.Diff.fromString(testing.allocator, "ve", .equal),
+                try DMP.Diff.fromString(testing.allocator, "-yea", .insert),
+                try DMP.Diff.fromString(testing.allocator, "r", .equal),
+                try DMP.Diff.fromString(testing.allocator, "ton", .delete),
+                try DMP.Diff.fromString(testing.allocator, " deal", .equal),
+                try DMP.Diff.fromString(testing.allocator, " at Everton", .insert),
+            }),
+            .expected = &.{
+                try DMP.Diff.fromString(testing.allocator, "James McCarthy ", .equal),
+                try DMP.Diff.fromString(testing.allocator, "close to ", .delete),
+                try DMP.Diff.fromString(testing.allocator, "sign", .equal),
+                try DMP.Diff.fromString(testing.allocator, "ing", .delete),
+                try DMP.Diff.fromString(testing.allocator, "s", .insert),
+                try DMP.Diff.fromString(testing.allocator, " new ", .equal),
+                try DMP.Diff.fromString(testing.allocator, "five-year deal at ", .insert),
+                try DMP.Diff.fromString(testing.allocator, "Everton", .equal),
+                try DMP.Diff.fromString(testing.allocator, " deal", .delete),
+            },
         },
         .{
-            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "星球大戰：新的希望 ", .insert), try DMP.Diff.fromString(testing.allocator, "star wars: ", .equal), try DMP.Diff.fromString(testing.allocator, "episodio iv - un", .delete), try DMP.Diff.fromString(testing.allocator, "a n", .equal), try DMP.Diff.fromString(testing.allocator, "u", .delete), try DMP.Diff.fromString(testing.allocator, "e", .equal), try DMP.Diff.fromString(testing.allocator, "va", .delete), try DMP.Diff.fromString(testing.allocator, "w", .insert), try DMP.Diff.fromString(testing.allocator, " ", .equal), try DMP.Diff.fromString(testing.allocator, "es", .delete), try DMP.Diff.fromString(testing.allocator, "ho", .insert), try DMP.Diff.fromString(testing.allocator, "pe", .equal), try DMP.Diff.fromString(testing.allocator, "ranza", .delete) }),
-            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "星球大戰：新的希望 ", .insert), try DMP.Diff.fromString(testing.allocator, "star wars: ", .equal), try DMP.Diff.fromString(testing.allocator, "episodio iv - una nueva esperanza", .delete), try DMP.Diff.fromString(testing.allocator, "a new hope", .insert) },
+            .diffs = testDiffList(&.{
+                try DMP.Diff.fromString(testing.allocator, "星球大戰：新的希望 ", .insert),
+                try DMP.Diff.fromString(testing.allocator, "star wars: ", .equal),
+                try DMP.Diff.fromString(testing.allocator, "episodio iv - un", .delete),
+                try DMP.Diff.fromString(testing.allocator, "a n", .equal),
+                try DMP.Diff.fromString(testing.allocator, "u", .delete),
+                try DMP.Diff.fromString(testing.allocator, "e", .equal),
+                try DMP.Diff.fromString(testing.allocator, "va", .delete),
+                try DMP.Diff.fromString(testing.allocator, "w", .insert),
+                try DMP.Diff.fromString(testing.allocator, " ", .equal),
+                try DMP.Diff.fromString(testing.allocator, "es", .delete),
+                try DMP.Diff.fromString(testing.allocator, "ho", .insert),
+                try DMP.Diff.fromString(testing.allocator, "pe", .equal),
+                try DMP.Diff.fromString(testing.allocator, "ranza", .delete),
+            }),
+            .expected = &.{
+                try DMP.Diff.fromString(testing.allocator, "星球大戰：新的希望 ", .insert),
+                try DMP.Diff.fromString(testing.allocator, "star wars: ", .equal),
+                try DMP.Diff.fromString(testing.allocator, "episodio iv - una nueva esperanza", .delete),
+                try DMP.Diff.fromString(testing.allocator, "a new hope", .insert),
+            },
         },
         .{
-            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "킬러 인 ", .insert), try DMP.Diff.fromString(testing.allocator, "리커버리", .equal), try DMP.Diff.fromString(testing.allocator, " 보이즈", .delete) }),
-            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "킬러 인 ", .insert), try DMP.Diff.fromString(testing.allocator, "리커버리", .equal), try DMP.Diff.fromString(testing.allocator, " 보이즈", .delete) },
+            .diffs = testDiffList(&.{
+                try DMP.Diff.fromString(testing.allocator, "킬러 인 ", .insert),
+                try DMP.Diff.fromString(testing.allocator, "리커버리", .equal),
+                try DMP.Diff.fromString(testing.allocator, " 보이즈", .delete),
+            }),
+            .expected = &.{
+                try DMP.Diff.fromString(testing.allocator, "킬러 인 ", .insert),
+                try DMP.Diff.fromString(testing.allocator, "리커버리", .equal),
+                try DMP.Diff.fromString(testing.allocator, " 보이즈", .delete),
+            },
         },
     }) |test_case| {
         var diffs = test_case.diffs;
@@ -528,20 +858,60 @@ test "cleanup efficiency" {
             .expected = &.{},
         },
         .{
-            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "ab", .delete), try DMP.Diff.fromString(testing.allocator, "12", .insert), try DMP.Diff.fromString(testing.allocator, "wxyz", .equal), try DMP.Diff.fromString(testing.allocator, "cd", .delete), try DMP.Diff.fromString(testing.allocator, "34", .insert) }),
-            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "ab", .delete), try DMP.Diff.fromString(testing.allocator, "12", .insert), try DMP.Diff.fromString(testing.allocator, "wxyz", .equal), try DMP.Diff.fromString(testing.allocator, "cd", .delete), try DMP.Diff.fromString(testing.allocator, "34", .insert) },
+            .diffs = testDiffList(&.{
+                try DMP.Diff.fromString(testing.allocator, "ab", .delete),
+                try DMP.Diff.fromString(testing.allocator, "12", .insert),
+                try DMP.Diff.fromString(testing.allocator, "wxyz", .equal),
+                try DMP.Diff.fromString(testing.allocator, "cd", .delete),
+                try DMP.Diff.fromString(testing.allocator, "34", .insert),
+            }),
+            .expected = &.{
+                try DMP.Diff.fromString(testing.allocator, "ab", .delete),
+                try DMP.Diff.fromString(testing.allocator, "12", .insert),
+                try DMP.Diff.fromString(testing.allocator, "wxyz", .equal),
+                try DMP.Diff.fromString(testing.allocator, "cd", .delete),
+                try DMP.Diff.fromString(testing.allocator, "34", .insert),
+            },
         },
         .{
-            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "ab", .delete), try DMP.Diff.fromString(testing.allocator, "12", .insert), try DMP.Diff.fromString(testing.allocator, "xyz", .equal), try DMP.Diff.fromString(testing.allocator, "cd", .delete), try DMP.Diff.fromString(testing.allocator, "34", .insert) }),
-            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "abxyzcd", .delete), try DMP.Diff.fromString(testing.allocator, "12xyz34", .insert) },
+            .diffs = testDiffList(&.{
+                try DMP.Diff.fromString(testing.allocator, "ab", .delete),
+                try DMP.Diff.fromString(testing.allocator, "12", .insert),
+                try DMP.Diff.fromString(testing.allocator, "xyz", .equal),
+                try DMP.Diff.fromString(testing.allocator, "cd", .delete),
+                try DMP.Diff.fromString(testing.allocator, "34", .insert),
+            }),
+            .expected = &.{
+                try DMP.Diff.fromString(testing.allocator, "abxyzcd", .delete),
+                try DMP.Diff.fromString(testing.allocator, "12xyz34", .insert),
+            },
         },
         .{
-            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "12", .insert), try DMP.Diff.fromString(testing.allocator, "x", .equal), try DMP.Diff.fromString(testing.allocator, "cd", .delete), try DMP.Diff.fromString(testing.allocator, "34", .insert) }),
-            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "xcd", .delete), try DMP.Diff.fromString(testing.allocator, "12x34", .insert) },
+            .diffs = testDiffList(&.{
+                try DMP.Diff.fromString(testing.allocator, "12", .insert),
+                try DMP.Diff.fromString(testing.allocator, "x", .equal),
+                try DMP.Diff.fromString(testing.allocator, "cd", .delete),
+                try DMP.Diff.fromString(testing.allocator, "34", .insert),
+            }),
+            .expected = &.{
+                try DMP.Diff.fromString(testing.allocator, "xcd", .delete),
+                try DMP.Diff.fromString(testing.allocator, "12x34", .insert),
+            },
         },
         .{
-            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "ab", .delete), try DMP.Diff.fromString(testing.allocator, "12", .insert), try DMP.Diff.fromString(testing.allocator, "xy", .equal), try DMP.Diff.fromString(testing.allocator, "34", .insert), try DMP.Diff.fromString(testing.allocator, "z", .equal), try DMP.Diff.fromString(testing.allocator, "cd", .delete), try DMP.Diff.fromString(testing.allocator, "56", .insert) }),
-            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "abxyzcd", .delete), try DMP.Diff.fromString(testing.allocator, "12xy34z56", .insert) },
+            .diffs = testDiffList(&.{
+                try DMP.Diff.fromString(testing.allocator, "ab", .delete),
+                try DMP.Diff.fromString(testing.allocator, "12", .insert),
+                try DMP.Diff.fromString(testing.allocator, "xy", .equal),
+                try DMP.Diff.fromString(testing.allocator, "34", .insert),
+                try DMP.Diff.fromString(testing.allocator, "z", .equal),
+                try DMP.Diff.fromString(testing.allocator, "cd", .delete),
+                try DMP.Diff.fromString(testing.allocator, "56", .insert),
+            }),
+            .expected = &.{
+                try DMP.Diff.fromString(testing.allocator, "abxyzcd", .delete),
+                try DMP.Diff.fromString(testing.allocator, "12xy34z56", .insert),
+            },
         },
     }) |test_case| {
         var diffs = test_case.diffs;
@@ -557,8 +927,17 @@ test "cleanup efficiency" {
 
     for ([_]TestCase{
         .{
-            .diffs = testDiffList(&.{ try DMP.Diff.fromString(testing.allocator, "ab", .delete), try DMP.Diff.fromString(testing.allocator, "12", .insert), try DMP.Diff.fromString(testing.allocator, "wxyz", .equal), try DMP.Diff.fromString(testing.allocator, "cd", .delete), try DMP.Diff.fromString(testing.allocator, "34", .insert) }),
-            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "abwxyzcd", .delete), try DMP.Diff.fromString(testing.allocator, "12wxyz34", .insert) },
+            .diffs = testDiffList(&.{
+                try DMP.Diff.fromString(testing.allocator, "ab", .delete),
+                try DMP.Diff.fromString(testing.allocator, "12", .insert),
+                try DMP.Diff.fromString(testing.allocator, "wxyz", .equal),
+                try DMP.Diff.fromString(testing.allocator, "cd", .delete),
+                try DMP.Diff.fromString(testing.allocator, "34", .insert),
+            }),
+            .expected = &.{
+                try DMP.Diff.fromString(testing.allocator, "abwxyzcd", .delete),
+                try DMP.Diff.fromString(testing.allocator, "12wxyz34", .insert),
+            },
         },
     }) |test_case| {
         var diffs = test_case.diffs;
@@ -853,19 +1232,39 @@ test "diff main" {
     }, .{
         .text1 = "abc",
         .text2 = "ab123c",
-        .expected = &.{ try DMP.Diff.fromString(testing.allocator, "ab", .equal), try DMP.Diff.fromString(testing.allocator, "123", .insert), try DMP.Diff.fromString(testing.allocator, "c", .equal) },
+        .expected = &.{
+            try DMP.Diff.fromString(testing.allocator, "ab", .equal),
+            try DMP.Diff.fromString(testing.allocator, "123", .insert),
+            try DMP.Diff.fromString(testing.allocator, "c", .equal),
+        },
     }, .{
         .text1 = "a123bc",
         .text2 = "abc",
-        .expected = &.{ try DMP.Diff.fromString(testing.allocator, "a", .equal), try DMP.Diff.fromString(testing.allocator, "123", .delete), try DMP.Diff.fromString(testing.allocator, "bc", .equal) },
+        .expected = &.{
+            try DMP.Diff.fromString(testing.allocator, "a", .equal),
+            try DMP.Diff.fromString(testing.allocator, "123", .delete),
+            try DMP.Diff.fromString(testing.allocator, "bc", .equal),
+        },
     }, .{
         .text1 = "abc",
         .text2 = "a123b456c",
-        .expected = &.{ try DMP.Diff.fromString(testing.allocator, "a", .equal), try DMP.Diff.fromString(testing.allocator, "123", .insert), try DMP.Diff.fromString(testing.allocator, "b", .equal), try DMP.Diff.fromString(testing.allocator, "456", .insert), try DMP.Diff.fromString(testing.allocator, "c", .equal) },
+        .expected = &.{
+            try DMP.Diff.fromString(testing.allocator, "a", .equal),
+            try DMP.Diff.fromString(testing.allocator, "123", .insert),
+            try DMP.Diff.fromString(testing.allocator, "b", .equal),
+            try DMP.Diff.fromString(testing.allocator, "456", .insert),
+            try DMP.Diff.fromString(testing.allocator, "c", .equal),
+        },
     }, .{
         .text1 = "a123b456c",
         .text2 = "abc",
-        .expected = &.{ try DMP.Diff.fromString(testing.allocator, "a", .equal), try DMP.Diff.fromString(testing.allocator, "123", .delete), try DMP.Diff.fromString(testing.allocator, "b", .equal), try DMP.Diff.fromString(testing.allocator, "456", .delete), try DMP.Diff.fromString(testing.allocator, "c", .equal) },
+        .expected = &.{
+            try DMP.Diff.fromString(testing.allocator, "a", .equal),
+            try DMP.Diff.fromString(testing.allocator, "123", .delete),
+            try DMP.Diff.fromString(testing.allocator, "b", .equal),
+            try DMP.Diff.fromString(testing.allocator, "456", .delete),
+            try DMP.Diff.fromString(testing.allocator, "c", .equal),
+        },
     } }) |test_case| {
         defer if (test_case.expected) |diffs| for (diffs) |diff| diff.deinit(testing.allocator);
 
@@ -883,7 +1282,10 @@ test "diff main" {
         .{
             .text1 = "a",
             .text2 = "b",
-            .expected = &.{ try DMP.Diff.fromString(testing.allocator, "a", .delete), try DMP.Diff.fromString(testing.allocator, "b", .insert) },
+            .expected = &.{
+                try DMP.Diff.fromString(testing.allocator, "a", .delete),
+                try DMP.Diff.fromString(testing.allocator, "b", .insert),
+            },
         },
         .{
             .text1 = "Apples are a fruit.",
