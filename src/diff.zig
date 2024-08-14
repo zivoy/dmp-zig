@@ -51,8 +51,8 @@ pub const Diff = struct {
 ///Run a faster, slightly less optimal diff.
 ///This method allows the 'checklines' of `diffMainStringStringBool` to be optional.
 ///Most of the time checklines is wanted, so default to true.
-pub fn diffMainStringString(allocator: Allocator, text1: []const u8, text2: []const u8) ![]Diff {
-    return diffMainStringStringBool(allocator, text1, text2, true);
+pub fn diffMainStringString(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8) ![]Diff {
+    return diffMainStringStringBool(allocator, diff_timeout, text1, text2, true);
 }
 
 ///Find the differences between two texts.
@@ -63,7 +63,7 @@ pub fn diffMainStringStringBool(allocator: Allocator, diff_timeout: f32, text1: 
     } else {
         deadline = diff_max_duration;
     }
-    return DiffPrivate.diffMainStringStringBoolTimeout(allocator, text1, text2, check_lines, deadline);
+    return DiffPrivate.diffMainStringStringBoolTimeout(allocator, diff_timeout, text1, text2, check_lines, deadline);
 }
 
 ///Determine the common prefix of two strings.
@@ -89,7 +89,7 @@ pub fn diffCommonSuffix(text1: []const u8, text2: []const u8) usize {
 }
 
 ///Reduce the number of edits by eliminating semantically trivial equalities.
-pub fn diffCleanupSemantic(allocator: Allocator, diffs: *[]Diff) void {
+pub fn diffCleanupSemantic(allocator: Allocator, diffs: *[]Diff) !void {
     _ = allocator;
     _ = diffs;
     @compileError("Not Implemented");
@@ -98,14 +98,14 @@ pub fn diffCleanupSemantic(allocator: Allocator, diffs: *[]Diff) void {
 ///Look for single edits surrounded on both sides by equalities
 ///which can be shifted sideways to align the edit to a word boundary.
 ///e.g: The c<ins>at c</ins>ame. -> The <ins>cat </ins>came.
-pub fn diffCleanupSemanticLossless(allocator: Allocator, diffs: *[]Diff) void {
+pub fn diffCleanupSemanticLossless(allocator: Allocator, diffs: *[]Diff) !void {
     _ = allocator;
     _ = diffs;
     @compileError("Not Implemented");
 }
 
 ///Reduce the number of edits by eliminating operationally trivial equalities.
-pub fn diffCleanupEfficiency(allocator: Allocator, diffs: *[]Diff) void {
+pub fn diffCleanupEfficiency(allocator: Allocator, diffs: *[]Diff) !void {
     _ = allocator;
     _ = diffs;
     @compileError("Not Implemented");

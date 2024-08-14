@@ -139,11 +139,11 @@ pub fn patchAddContext(comptime MatchMaxContainer: type, allocator: Allocator, p
 // patch make parts
 ///Compute a list of patches to turn text1 into text2.
 ///A set of diffs will be computed.
-pub fn patchMakeStringString(allocator: Allocator, text1: [:0]const u8, text2: [:0]const u8) !PatchList {
-    var diffs = diff_funcs.diffMainStringStringBool(text1, text2, true);
+pub fn patchMakeStringString(allocator: Allocator, diff_timeout: f32, text1: [:0]const u8, text2: [:0]const u8) !PatchList {
+    var diffs = try diff_funcs.diffMainStringStringBool(allocator, diff_timeout, text1, text2, true);
     if (diffs.len > 2) {
-        diff_funcs.diffCleanupSemantic(allocator, &diffs);
-        diff_funcs.diffCleanupEfficiency(allocator, &diffs);
+        try diff_funcs.diffCleanupSemantic(allocator, &diffs);
+        try diff_funcs.diffCleanupEfficiency(allocator, &diffs);
     }
 
     return patchMakeStringDiffs(allocator, text1, diffs);

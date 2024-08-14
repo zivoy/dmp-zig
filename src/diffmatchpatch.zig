@@ -60,7 +60,7 @@ fn DiffMatchPatchCustom(MatchMaxContainer: type) type {
 
         // diff ------------------
         pub inline fn diffMainStringString(self: Self, text1: []const u8, text2: []const u8) ![]Diff {
-            return diff.diffMainStringString(self.allocator, text1, text2);
+            return diff.diffMainStringString(self.allocator, self.diff_timeout, text1, text2);
         }
         pub inline fn diffMainStringStringBool(self: Self, text1: []const u8, text2: []const u8, check_lines: bool) ![]Diff {
             return diff.diffMainStringStringBool(self.allocator, self.diff_timeout, text1, text2, check_lines);
@@ -73,16 +73,16 @@ fn DiffMatchPatchCustom(MatchMaxContainer: type) type {
             _ = self;
             return diff.diffCommonSuffix(text1, text2);
         }
-        pub inline fn diffCleanupSemantic(self: Self, diffs: *[]Diff) void {
+        pub inline fn diffCleanupSemantic(self: Self, diffs: *[]Diff) !void {
             return diff.diffCleanupSemantic(self.allocator, diffs);
         }
-        pub inline fn diffCleanupSemanticLossless(self: Self, diffs: *[]Diff) void {
+        pub inline fn diffCleanupSemanticLossless(self: Self, diffs: *[]Diff) !void {
             return diff.diffCleanupSemanticLossless(self.allocator, diffs);
         }
-        pub inline fn diffCleanupEfficiency(self: Self, diffs: *[]Diff) void {
+        pub inline fn diffCleanupEfficiency(self: Self, diffs: *[]Diff) !void {
             return diff.diffCleanupEfficiency(self.allocator, diffs);
         }
-        pub inline fn diffCleanupMerge(self: Self, diffs: *[]Diff) void {
+        pub inline fn diffCleanupMerge(self: Self, diffs: *[]Diff) !void {
             return diff.diffCleanupMerge(self.allocator, diffs);
         }
         pub inline fn diffXIndex(self: Self, diffs: []Diff, loc: usize) usize {
@@ -137,7 +137,7 @@ fn DiffMatchPatchCustom(MatchMaxContainer: type) type {
             return patch.patchAddContext(MatchMaxContainer, self.allocator, self.patch_margin, p, text);
         }
         pub inline fn patchMakeStringString(self: Self, text1: [:0]const u8, text2: [:0]const u8) !PatchList {
-            return patch.patchMakeStringString(self.allocator, text1, text2);
+            return patch.patchMakeStringString(self.allocator, self.diff_timeout, text1, text2);
         }
         pub inline fn patchMakeDiffs(self: Self, diffs: []Diff) !PatchList {
             return patch.patchMakeDiffs(self.allocator, diffs);

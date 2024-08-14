@@ -82,7 +82,7 @@ test "add context" {
 test "patch make and patch to text" {
     if (true) return error.SkipZigTest;
     const Input = union(enum) {
-        diffs: []DMP.Diff,
+        diffs: []Diff,
         text: [:0]const u8,
         none,
     };

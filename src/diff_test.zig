@@ -2,6 +2,7 @@ const std = @import("std");
 const DMP = @import("diffmatchpatch.zig").DiffMatchPatch;
 const DiffPrivate = @import("diff_private.zig");
 
+const diff_max_duration = @import("diff.zig").diff_max_duration;
 const Diff = @import("diff.zig").Diff;
 const DiffError = @import("diff.zig").DiffError;
 
@@ -57,15 +58,14 @@ test "common suffix" {
 
 test "common overlap" {
     if (true) return error.SkipZigTest;
-    const dmp = DMP.init(testing.allocator);
-    try testing.expectEqual(0, DiffPrivate.diffCommonOverlap(dmp, "", "abcd"));
-    try testing.expectEqual(3, DiffPrivate.diffCommonOverlap(dmp, "abc", "abcd"));
-    try testing.expectEqual(0, DiffPrivate.diffCommonOverlap(dmp, "123456", "abcd"));
-    try testing.expectEqual(3, DiffPrivate.diffCommonOverlap(dmp, "123456xxx", "xxxabcd"));
+    try testing.expectEqual(0, DiffPrivate.diffCommonOverlap("", "abcd"));
+    try testing.expectEqual(3, DiffPrivate.diffCommonOverlap("abc", "abcd"));
+    try testing.expectEqual(0, DiffPrivate.diffCommonOverlap("123456", "abcd"));
+    try testing.expectEqual(3, DiffPrivate.diffCommonOverlap("123456xxx", "xxxabcd"));
 
     // Some overly clever languages (C#) may treat ligatures as equal to their
     // component letters.  E.g. U+FB01 == 'fi'
-    try testing.expectEqual(0, DiffPrivate.diffCommonOverlap(dmp, "fi", "\u{fb01}i"));
+    try testing.expectEqual(0, DiffPrivate.diffCommonOverlap("fi", "\u{fb01}i"));
 }
 
 test "halfmatch" {
@@ -174,7 +174,7 @@ test "bisect split" {
     const text1 = "STUV\x05WX\x05YZ\x05[";
     const text2 = "WĺĻļ\x05YZ\x05ĽľĿŀZ";
 
-    const diffs = try DiffPrivate.diffBisectSplit(dmp, text1, text2, 7, 6, std.time.ns_per_hour);
+    const diffs = try DiffPrivate.diffBisectSplit(testing.allocator, dmp.diff_timeout, text1, text2, 7, 6, std.time.ns_per_hour);
     defer for (diffs) |diff| diff.deinit(testing.allocator);
     for (diffs) |diff| {
         try testing.expect(std.unicode.utf8ValidateSlice(diff.text));
@@ -304,7 +304,7 @@ test "cleanup merge" {
     if (true) return error.SkipZigTest;
     const TestCase = struct {
         diffs: []Diff,
-        expected: []const DMP.Diff,
+        expected: []const Diff,
     };
 
     const dmp = DMP.init(testing.allocator);
@@ -471,7 +471,7 @@ test "cleanup semantic lossless" {
     if (true) return error.SkipZigTest;
     const TestCase = struct {
         diffs: []Diff,
-        expected: []const DMP.Diff,
+        expected: []const Diff,
     };
 
     const dmp = DMP.init(testing.allocator);
@@ -602,7 +602,7 @@ test "cleanup semantic" {
     if (true) return error.SkipZigTest;
     const TestCase = struct {
         diffs: []Diff,
-        expected: []const DMP.Diff,
+        expected: []const Diff,
     };
 
     const dmp = DMP.init(testing.allocator);
@@ -846,7 +846,7 @@ test "cleanup efficiency" {
     if (true) return error.SkipZigTest;
     const TestCase = struct {
         diffs: []Diff,
-        expected: []const DMP.Diff,
+        expected: []const Diff,
     };
 
     var dmp = DMP.init(testing.allocator);
@@ -1175,10 +1175,10 @@ test "bisect" {
 
     const TestCase = struct {
         deadline: u64,
-        expected: []const DMP.Diff,
+        expected: []const Diff,
     };
 
-    for ([_]TestCase{ .{ .deadline = DMP.diff_max_duration, .expected = &.{
+    for ([_]TestCase{ .{ .deadline = diff_max_duration, .expected = &.{
         try Diff.fromString(testing.allocator, "c", .delete),
         try Diff.fromString(testing.allocator, "m", .insert),
         try Diff.fromString(testing.allocator, "a", .equal),
@@ -1190,7 +1190,7 @@ test "bisect" {
     } } }) |test_case| {
         defer for (test_case.expected) |diff| diff.deinit();
 
-        const actual = try DiffPrivate.diffBisect(dmp, text1, text2, test_case.deadline);
+        const actual = try DiffPrivate.diffBisect(testing.allocator, text1, text2, test_case.deadline);
         defer testing.allocator.free(actual);
         defer for (actual) |diff| diff.deinit();
 
@@ -1216,7 +1216,7 @@ test "diff main" {
     const TestCase = struct {
         text1: []const u8,
         text2: []const u8,
-        expected: []const DMP.Diff,
+        expected: []const Diff,
     };
 
     var dmp = DMP.init(testing.allocator);
@@ -1480,7 +1480,7 @@ test "partial line index" {
     );
     defer testing.allocator.free(text2);
 
-    var linearray = try DiffPrivate.diffLinesToChars(dmp, &text1, &text2);
+    var linearray = try DiffPrivate.diffLinesToChars(testing.allocator, &text1, &text2);
     defer linearray.deinit();
 
     var diffs = try dmp.diffMainStringStringBool(text1, text2, false);

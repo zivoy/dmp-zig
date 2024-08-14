@@ -39,11 +39,11 @@ pub const LineArray = struct {
 
 ///Find the differences between two texts.  Simplifies the problem by
 ///stripping any common prefix or suffix off the texts before diffing.
-pub fn diffMainStringStringBoolTimeout(allocator: Allocator, text1: []const u8, text2: []const u8, check_lines: bool, ns_time_limit: u64) ![]DMP.Diff {
+pub fn diffMainStringStringBoolTimeout(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, check_lines: bool, ns_time_limit: u64) ![]DMP.Diff {
     var timer = try std.time.Timer.start();
-    return diffMainStringStringBoolTimeoutTimer(allocator, text1, text2, check_lines, ns_time_limit, &timer);
+    return diffMainStringStringBoolTimeoutTimer(allocator, diff_timeout, text1, text2, check_lines, ns_time_limit, &timer);
 }
-fn diffMainStringStringBoolTimeoutTimer(allocator: Allocator, text1: []const u8, text2: []const u8, check_lines: bool, ns_time_limit: u64, timer: *std.time.Timer) ![]DMP.Diff {
+fn diffMainStringStringBoolTimeoutTimer(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, check_lines: bool, ns_time_limit: u64, timer: *std.time.Timer) ![]DMP.Diff {
     var diffs = std.ArrayList(DMP.Diff).init(allocator);
     defer diffs.deinit();
     errdefer for (diffs.items) |diff| diff.deinit(allocator);
@@ -70,7 +70,7 @@ fn diffMainStringStringBoolTimeoutTimer(allocator: Allocator, text1: []const u8,
 
     // Compute the diff on the middle block.
     {
-        const computed_diffs = try diffComputeTimer(allocator, text_chopped1, text_chopped2, check_lines, ns_time_limit, timer);
+        const computed_diffs = try diffComputeTimer(allocator, diff_timeout, text_chopped1, text_chopped2, check_lines, ns_time_limit, timer);
         defer allocator.free(computed_diffs);
         try diffs.appendSlice(computed_diffs);
     }
@@ -84,18 +84,18 @@ fn diffMainStringStringBoolTimeoutTimer(allocator: Allocator, text1: []const u8,
     }
 
     var res = try diffs.toOwnedSlice();
-    try diff_funcs.diffCleanupMerge(&res);
+    try diff_funcs.diffCleanupMerge(allocator, &res);
 
     return res;
 }
 
 ///Find the differences between two texts.  Assumes that the texts do not
 ///have any common prefix or suffix.
-pub fn diffCompute(allocator: Allocator, text1: []const u8, text2: []const u8, checklines: bool, ns_time_limit: u64) ![]DMP.Diff {
+pub fn diffCompute(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, checklines: bool, ns_time_limit: u64) ![]DMP.Diff {
     var timer = try std.time.Timer.start();
-    return diffComputeTimer(allocator, text1, text2, checklines, ns_time_limit, &timer);
+    return diffComputeTimer(allocator, diff_timeout, text1, text2, checklines, ns_time_limit, &timer);
 }
-fn diffComputeTimer(allocator: Allocator, text1: []const u8, text2: []const u8, checklines: bool, ns_time_limit: u64, timer: *std.time.Timer) Allocator.Error![]DMP.Diff {
+fn diffComputeTimer(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, checklines: bool, ns_time_limit: u64, timer: *std.time.Timer) Allocator.Error![]DMP.Diff {
     var diffs = std.ArrayList(DMP.Diff).init(allocator);
     defer diffs.deinit();
     errdefer for (diffs.items) |diff| diff.deinit(allocator);
@@ -133,13 +133,13 @@ fn diffComputeTimer(allocator: Allocator, text1: []const u8, text2: []const u8, 
     }
 
     // Check to see if the problem can be split in two.
-    if (try diffHalfMatch(allocator, text1, text2)) |hm| {
+    if (try diffHalfMatch(allocator, diff_timeout, text1, text2)) |hm| {
         errdefer allocator.free(hm.common);
         // A half-match was found, sort out the return data.
         // Send both pairs off for separate processing.
-        const diffs_a = try diffMainStringStringBoolTimeoutTimer(allocator, hm.text1_prefix, hm.text2_prefix, checklines, ns_time_limit, timer);
+        const diffs_a = try diffMainStringStringBoolTimeoutTimer(allocator, diff_timeout, hm.text1_prefix, hm.text2_prefix, checklines, ns_time_limit, timer);
         defer allocator.free(diffs_a);
-        const diffs_b = try diffMainStringStringBoolTimeoutTimer(allocator, hm.text1_suffix, hm.text2_suffix, checklines, ns_time_limit, timer);
+        const diffs_b = try diffMainStringStringBoolTimeoutTimer(allocator, diff_timeout, hm.text1_suffix, hm.text2_suffix, checklines, ns_time_limit, timer);
         defer allocator.free(diffs_b);
 
         // Merge the results.
@@ -193,18 +193,18 @@ fn diffBisectTimer(allocator: Allocator, text1: []const u8, text2: []const u8, n
 
 ///Given the location of the 'middle snake', split the diff in two parts
 ///and recurse.
-pub fn diffBisectSplit(allocator: Allocator, text1: []const u8, text2: []const u8, x: usize, y: usize, ns_time_limit: u64) ![]DMP.Diff {
+pub fn diffBisectSplit(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, x: usize, y: usize, ns_time_limit: u64) ![]DMP.Diff {
     var timer = try std.time.Timer.start();
-    return diffBisectSplitTimer(allocator, text1, text2, x, y, ns_time_limit, &timer);
+    return diffBisectSplitTimer(allocator, diff_timeout, text1, text2, x, y, ns_time_limit, &timer);
 }
-fn diffBisectSplitTimer(allocator: Allocator, text1: []const u8, text2: []const u8, x: usize, y: usize, ns_time_limit: u64, timer: *std.time.Timer) ![]DMP.Diff {
+fn diffBisectSplitTimer(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, x: usize, y: usize, ns_time_limit: u64, timer: *std.time.Timer) ![]DMP.Diff {
     const text1a = text1[0..x];
     const text2a = text2[0..y];
     const text1b = text1[x..];
     const text2b = text2[y..];
 
-    var diffs1 = try diffMainStringStringBoolTimeoutTimer(allocator, text1a, text2a, false, ns_time_limit, timer);
-    const diffs2 = try diffMainStringStringBoolTimeoutTimer(allocator, text1b, text2b, false, ns_time_limit, timer);
+    var diffs1 = try diffMainStringStringBoolTimeoutTimer(allocator, diff_timeout, text1a, text2a, false, ns_time_limit, timer);
+    const diffs2 = try diffMainStringStringBoolTimeoutTimer(allocator, diff_timeout, text1b, text2b, false, ns_time_limit, timer);
 
     const len_start = diffs1.len;
     const new_len = diffs1.len + diffs2.len;
