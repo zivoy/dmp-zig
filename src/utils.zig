@@ -11,6 +11,7 @@ fn encodeURIValid(chr: u8) bool {
     };
 }
 
+// TODO: add utf8 validation vefore this is used
 pub fn utf8CountCodepointsPanic(text: []const u8) usize {
     return std.unicode.utf8CountCodepoints(text) catch |err| {
         var buf: [128]u8 = undefined;
@@ -23,15 +24,19 @@ pub fn getIdxOrNull(comptime T: type, arrayList: std.ArrayList(T), idx: usize) ?
     return arrayList.items[idx];
 }
 
+// TODO: use this funciton more often
 ///resizes a slice, returns the old size
 pub fn resize(comptime T: type, allocator: std.mem.Allocator, slice: *[]T, new_len: usize) !usize {
     const len_start = slice.len;
-    if (allocator.resize(slice.*, new_len)) return len_start;
+    if (len_start == new_len) return len_start;
+    if (allocator.resize(slice.*, new_len)) {
+        slice.*.len = new_len;
+        return len_start;
+    }
 
     //failed to resize
     const new_slice = try allocator.alloc(T, new_len);
     @memcpy(new_slice[0..len_start], slice.*[0..@min(new_len, len_start)]);
-    @memset(slice.*, undefined);
     if (len_start < new_len) @memset(new_slice[len_start..], undefined);
     allocator.free(slice.*);
     slice.* = new_slice;
@@ -94,7 +99,7 @@ pub fn matchPatchHeader(text: []const u8) ?struct { usize, ?usize, usize, ?usize
 }
 
 ///Emulates the regex
-///`\n\r?\n$`;
+///`\n\r?\n$`
 pub fn blankLineEnd(text: []const u8) bool {
     if (text.len < 2) return false;
 
@@ -109,7 +114,7 @@ pub fn blankLineEnd(text: []const u8) bool {
 }
 
 ///Emulates the regex
-///`^\r?\n\r?\n`;
+///`^\r?\n\r?\n`
 pub fn blankLineStart(text: []const u8) bool {
     if (text.len < 2) return false;
 
@@ -126,6 +131,20 @@ pub fn blankLineStart(text: []const u8) bool {
     if (text[0] == '\r' and text[1] == '\n' and text[2] == '\n') return true;
 
     return false;
+}
+
+///returns true for all chars that the regex `\s` will match
+pub fn isWhitespace(char: u8) bool {
+    return switch (char) {
+        ' ',
+        '\t',
+        '\r',
+        '\n',
+        0x0B, // \v vertical tab
+        0x0C, // \f form feed
+        => true,
+        else => false,
+    };
 }
 
 const testing = std.testing;

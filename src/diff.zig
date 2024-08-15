@@ -91,30 +91,294 @@ pub fn diffCommonSuffix(text1: []const u8, text2: []const u8) usize {
 
 ///Reduce the number of edits by eliminating semantically trivial equalities.
 pub fn diffCleanupSemantic(allocator: Allocator, diffs: *[]Diff) !void {
-    _ = allocator;
-    _ = diffs;
-    @compileError("Not Implemented");
+    if (diffs.len == 0) return;
+    var diff_list = std.ArrayList(Diff).fromOwnedSlice(allocator, diffs.*);
+    defer diff_list.deinit();
+    errdefer if (diff_list.toOwnedSlice()) |diff_o| {
+        diffs.* = diff_o;
+    } else |_| {};
+
+    var changes = false;
+
+    // Stack of indices where equalities are found.
+    var equalities = try std.ArrayList(usize).initCapacity(allocator, diffs.len);
+    defer equalities.deinit();
+
+    var pointer: usize = 0;
+    var last_equality: ?[]const u8 = null;
+
+    // Number of characters that changed prior to the equality.
+    var length_insertions1: usize = 0;
+    var length_deletions1: usize = 0;
+
+    // Number of characters that changed after the equality.
+    var length_insertions2: usize = 0;
+    var length_deletions2: usize = 0;
+
+    while (pointer < diff_list.items.len) {
+        const diff = diff_list.items[pointer];
+        if (diff.operation == .equal) {
+            // Equalitfound.
+            equalities.appendAssumeCapacity(pointer);
+            length_insertions1 = length_insertions2;
+            length_deletions1 = length_deletions2;
+            length_insertions2 = 0;
+            length_deletions2 = 0;
+            last_equality = diff.text;
+
+            pointer += 1;
+            continue;
+        }
+
+        // An insertion or deletion.
+        if (diff.operation == .insert) {
+            length_insertions2 += utils.utf8CountCodepointsPanic(diff.text);
+        } else {
+            length_deletions2 += utils.utf8CountCodepointsPanic(diff.text);
+        }
+
+        // Eliminate an equality that is smaller or equal to the edits on both sides of it.
+        const difference1 = @max(length_insertions1, length_deletions1);
+        const difference2 = @max(length_insertions2, length_deletions2);
+
+        if (blk: {
+            if (last_equality == null) break :blk false;
+            const last_equality_count = utils.utf8CountCodepointsPanic(last_equality.?);
+            break :blk last_equality_count <= difference1 and last_equality_count <= difference2;
+        }) {
+            // Duplicate record
+            try diff_list.insert(equalities.getLast(), try Diff.fromSlice(allocator, last_equality.?, .delete));
+
+            // Change second copy to insert
+            diff_list.items[equalities.getLast() + 1].operation = .insert;
+            // Thow away the equality that was deleted
+            equalities.items.len -= 1;
+
+            if (equalities.items.len > 0) {
+                // Throw away the previous equality (it needs to be reevaluated).
+                equalities.items.len -= 1;
+            }
+
+            if (equalities.items.len > 0) {
+                pointer = equalities.getLast() + 1;
+            } else {
+                pointer = 0;
+            }
+
+            // reset the counters
+            length_insertions1 = 0;
+            length_deletions1 = 0;
+            length_insertions2 = 0;
+            length_deletions2 = 0;
+            last_equality = null;
+            changes = true;
+            continue;
+        }
+
+        pointer += 1;
+    }
+
+    // Normalize the diff.
+    diffs.* = try diff_list.toOwnedSlice();
+    if (changes) {
+        try diffCleanupMerge(allocator, diffs);
+    }
+    try diffCleanupSemanticLossless(allocator, diffs);
+    diff_list.capacity = diffs.len;
+    diff_list.items = diffs.*;
+
+    // Find any overlaps between deletions and insertions.
+    // e.g: <del>abcxxx</del><ins>xxxdef</ins>
+    //   -> <del>abc</del>xxx<ins>def</ins>
+    // e.g: <del>xxxabc</del><ins>defxxx</ins>
+    //   -> <ins>def</ins>xxx<del>abc</del>
+    // Only extract an overlap if it is as big as the edit ahead or behind it.
+    pointer = 1;
+    while (pointer < diff_list.items.len) {
+        var last_diff = diff_list.items[pointer - 1];
+        var diff = diff_list.items[pointer];
+        if (last_diff.operation == .delete and diff.operation == .insert) {
+            const overlap_length1 = DiffPrivate.diffCommonOverlap(last_diff.text, diff.text);
+            const overlap_length2 = DiffPrivate.diffCommonOverlap(diff.text, last_diff.text);
+            if (overlap_length1 >= overlap_length2) {
+                if (@as(f64, @floatFromInt(overlap_length1)) >= @as(f64, @floatFromInt(utils.utf8CountCodepointsPanic(last_diff.text))) / 2 or
+                    @as(f64, @floatFromInt(overlap_length1)) >= @as(f64, @floatFromInt(utils.utf8CountCodepointsPanic(diff.text))) / 2)
+                {
+                    // Overlap found. Insert an equality and trim the surrounding edits.
+                    try diff_list.insert(pointer, try Diff.fromSlice(allocator, diff.text[0..overlap_length1], .equal));
+
+                    _ = try utils.resize(u8, allocator, &diff_list.items[pointer - 1].text, last_diff.text.len - overlap_length1);
+
+                    std.mem.copyForwards(u8, diff.text[0 .. diff.text.len - overlap_length1], diff.text[overlap_length1..]);
+                    _ = try utils.resize(u8, allocator, &diff_list.items[pointer + 1].text, diff.text.len - overlap_length1);
+
+                    pointer += 1;
+                }
+            } else {
+                if (@as(f64, @floatFromInt(overlap_length2)) >= @as(f64, @floatFromInt(utils.utf8CountCodepointsPanic(last_diff.text))) / 2 or
+                    @as(f64, @floatFromInt(overlap_length2)) >= @as(f64, @floatFromInt(utils.utf8CountCodepointsPanic(diff.text))) / 2)
+                {
+                    // Reverse overlap found. Insert an equality and swap and trim the surrounding edits.
+                    try diff_list.insert(pointer, try Diff.fromSlice(allocator, last_diff.text[0..overlap_length2], .equal));
+                    diff_list.items[pointer - 1].operation = .insert;
+                    diff_list.items[pointer - 1].text = diff.text;
+                    diff_list.items[pointer + 1].operation = .delete;
+                    diff_list.items[pointer + 1].text = last_diff.text;
+
+                    _ = try utils.resize(u8, allocator, &diff_list.items[pointer - 1].text, diff.text.len - overlap_length2);
+
+                    std.mem.copyForwards(
+                        u8,
+                        diff_list.items[pointer + 1].text[0 .. last_diff.text.len - overlap_length2],
+                        last_diff.text[overlap_length2..],
+                    );
+                    _ = try utils.resize(u8, allocator, &diff_list.items[pointer + 1].text, last_diff.text.len - overlap_length2);
+
+                    pointer += 1;
+                }
+            }
+            pointer += 1;
+        }
+        pointer += 1;
+    }
+
+    diffs.* = try diff_list.toOwnedSlice();
 }
 
 ///Look for single edits surrounded on both sides by equalities
 ///which can be shifted sideways to align the edit to a word boundary.
 ///e.g: The c<ins>at c</ins>ame. -> The <ins>cat </ins>came.
 pub fn diffCleanupSemanticLossless(allocator: Allocator, diffs: *[]Diff) !void {
-    _ = allocator;
-    _ = diffs;
-    @compileError("Not Implemented");
+    if (diffs.len == 0) return;
+
+    var diff_list = std.ArrayList(Diff).fromOwnedSlice(allocator, diffs.*);
+    defer diff_list.deinit();
+    errdefer if (diff_list.toOwnedSlice()) |diff_o| {
+        diffs.* = diff_o;
+    } else |_| {};
+
+    // Intentionally ignore the first and last element (don't need checking).
+    var pointer: usize = 1;
+    while (pointer < diff_list.items.len - 1) {
+        if (diff_list.items[pointer - 1].operation == .equal and
+            diff_list.items[pointer + 1].operation == .equal)
+        {
+            // This is a single edit surrounded by equalities.
+            var equality1 = std.ArrayList(u8).init(allocator);
+            defer equality1.deinit();
+            try equality1.appendSlice(diff_list.items[pointer - 1].text);
+
+            var edit = std.ArrayList(u8).init(allocator);
+            defer edit.deinit();
+            try edit.appendSlice(diff_list.items[pointer].text);
+
+            var equality2 = std.ArrayList(u8).init(allocator);
+            defer equality2.deinit();
+            try equality2.appendSlice(diff_list.items[pointer + 1].text);
+
+            // First, shift the edit as far left as possible.
+            const common_offset = diffCommonSuffix(equality1.items, edit.items);
+            if (common_offset > 0) {
+                equality1.items.len -= common_offset;
+
+                try equality2.insertSlice(0, edit.items[edit.items.len - common_offset ..]);
+
+                std.mem.copyBackwards(u8, edit.items[common_offset..], edit.items[0 .. edit.items.len - common_offset]);
+                std.mem.copyForwards(u8, edit.items[0..common_offset], equality2.items[0..common_offset]);
+            }
+
+            // Second, step character by character right, looking for the best fit.
+            // these are used to chop up the lists
+            var best_equality1_len = equality1.items.len;
+            var edit_start: usize = 0;
+            var equality2_start: usize = 0;
+            var best_score = DiffPrivate.diffCleanupSemanticScore(equality1.items, edit.items) +
+                DiffPrivate.diffCleanupSemanticScore(edit.items, equality2.items);
+
+            while (edit.items.len - edit_start != 0 and
+                equality2.items.len - equality2_start != 0)
+            {
+                const cp_len = std.unicode.utf8ByteSequenceLength(edit.items[edit_start]) catch break;
+                if (equality2.items.len - equality2_start < cp_len or
+                    !std.mem.eql(u8, edit.items[edit_start .. edit_start + cp_len], equality2.items[equality2_start .. equality2_start + cp_len]))
+                {
+                    break;
+                }
+
+                try equality1.appendSlice(edit.items[edit_start .. edit_start + cp_len]);
+
+                try edit.appendSlice(equality2.items[equality2_start .. equality2_start + cp_len]);
+                edit_start += cp_len;
+
+                equality2_start += cp_len;
+
+                const score = DiffPrivate.diffCleanupSemanticScore(equality1.items, edit.items[edit_start..]) +
+                    DiffPrivate.diffCleanupSemanticScore(edit.items[edit_start..], equality2.items[equality2_start..]);
+                // The >= encourages trailing rather than leading whitespace on edits.
+                if (score >= best_score) {
+                    best_score = score;
+                    best_equality1_len = equality1.items.len;
+
+                    std.mem.copyForwards(u8, edit.items[0 .. edit.items.len - edit_start], edit.items[edit_start..]);
+                    edit.items.len -= edit_start;
+                    edit_start = 0;
+
+                    std.mem.copyForwards(u8, equality2.items[0 .. equality2.items.len - equality2_start], equality2.items[equality2_start..]);
+                    equality2.items.len -= equality2_start;
+                    equality2_start = 0;
+                }
+            }
+
+            if (!std.mem.eql(u8, diff_list.items[pointer - 1].text, equality1.items[0..best_equality1_len])) {
+                // We have an improvement, save it back to the diff.
+                if (best_equality1_len != 0) {
+                    allocator.free(diff_list.items[pointer - 1].text);
+                    equality1.items.len = best_equality1_len;
+                    diff_list.items[pointer - 1].text = try equality1.toOwnedSlice();
+                } else {
+                    var last_diff = diff_list.orderedRemove(pointer - 1);
+                    last_diff.deinit(allocator);
+                    pointer -= 1;
+                }
+
+                allocator.free(diff_list.items[pointer].text);
+                edit.items.len -= edit_start;
+                diff_list.items[pointer].text = try edit.toOwnedSlice();
+
+                if (equality2.items.len - equality2_start != 0) {
+                    allocator.free(diff_list.items[pointer + 1].text);
+                    diff_list.items[pointer + 1].text = try equality2.toOwnedSlice();
+                } else {
+                    var next_diff = diff_list.orderedRemove(pointer + 1);
+                    next_diff.deinit(allocator);
+                    pointer -= 1;
+                }
+            }
+        }
+        pointer += 1;
+    }
+
+    diffs.* = try diff_list.toOwnedSlice();
 }
 
 ///Reduce the number of edits by eliminating operationally trivial equalities.
 pub fn diffCleanupEfficiency(allocator: Allocator, diffs: *[]Diff) !void {
-    _ = allocator;
-    _ = diffs;
+    if (diffs.len == 0) return;
+
+    var diff_list = std.ArrayList(Diff).fromOwnedSlice(allocator, diffs.*);
+    defer diff_list.deinit();
+    errdefer if (diff_list.toOwnedSlice()) |diff_o| {
+        diffs.* = diff_o;
+    } else |_| {};
+
+    diffs.* = try diff_list.toOwnedSlice();
     @compileError("Not Implemented");
 }
 
 ///Reorder and merge like edit sections.  Merge equalities.
 ///Any edit section can move as long as it doesn't cross an equality.
 pub fn diffCleanupMerge(allocator: Allocator, diffs: *[]Diff) !void {
+    if (diffs.len == 0) return;
     var diff_list = std.ArrayList(Diff).fromOwnedSlice(allocator, diffs.*);
     defer diff_list.deinit();
     errdefer if (diff_list.toOwnedSlice()) |diff_o| {

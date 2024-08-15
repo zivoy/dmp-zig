@@ -57,7 +57,6 @@ test "common suffix" {
 }
 
 test "common overlap" {
-    if (true) return error.SkipZigTest;
     try testing.expectEqual(0, DiffPrivate.diffCommonOverlap("", "abcd"));
     try testing.expectEqual(3, DiffPrivate.diffCommonOverlap("abc", "abcd"));
     try testing.expectEqual(0, DiffPrivate.diffCommonOverlap("123456", "abcd"));
@@ -457,19 +456,34 @@ test "cleanup merge" {
         },
     };
 
-    for (test_cases) |test_case| {
+    var end: usize = 0;
+    defer {
+        for (test_cases, 0..) |test_case, i| {
+            for (test_case.expected) |*diff| @constCast(diff).deinit(testing.allocator);
+            if (i > end) {
+                for (test_case.diffs) |*diff| @constCast(diff).deinit(testing.allocator);
+                testing.allocator.free(test_case.diffs);
+            }
+        }
+    }
+
+    for (test_cases, 0..) |test_case, i| {
+        end = i;
         var diffs = test_case.diffs;
         defer testing.allocator.free(diffs);
         defer for (diffs) |*diff| diff.deinit(testing.allocator);
-        defer for (test_case.expected) |*diff| @constCast(diff).deinit(testing.allocator);
 
         try dmp.diffCleanupMerge(&diffs);
-        try testing.expectEqualDeep(test_case.expected, diffs);
+
+        try testing.expectEqual(test_case.expected.len, diffs.len);
+        for (test_case.expected, diffs) |expected, diff| {
+            try testing.expectEqual(expected.operation, diff.operation);
+            try testing.expectEqualStrings(expected.text, diff.text);
+        }
     }
 }
 
 test "cleanup semantic lossless" {
-    if (true) return error.SkipZigTest;
     const TestCase = struct {
         diffs: []Diff,
         expected: []const Diff,
@@ -590,19 +604,34 @@ test "cleanup semantic lossless" {
         },
     };
 
-    for (test_cases) |test_case| {
+    var end: usize = 0;
+    defer {
+        for (test_cases, 0..) |test_case, i| {
+            for (test_case.expected) |*diff| @constCast(diff).deinit(testing.allocator);
+            if (i > end) {
+                for (test_case.diffs) |*diff| @constCast(diff).deinit(testing.allocator);
+                testing.allocator.free(test_case.diffs);
+            }
+        }
+    }
+
+    for (test_cases, 0..) |test_case, i| {
+        end = i;
         var diffs = test_case.diffs;
         defer testing.allocator.free(diffs);
         defer for (diffs) |*diff| diff.deinit(testing.allocator);
-        defer for (test_case.expected) |*diff| @constCast(diff).deinit(testing.allocator);
 
-        dmp.diffCleanupSemanticLossless(&diffs);
-        try testing.expectEqualDeep(test_case.expected, diffs);
+        try dmp.diffCleanupSemanticLossless(&diffs);
+
+        try testing.expectEqual(test_case.expected.len, diffs.len);
+        for (test_case.expected, diffs) |expected, diff| {
+            try testing.expectEqual(expected.operation, diff.operation);
+            try testing.expectEqualStrings(expected.text, diff.text);
+        }
     }
 }
 
 test "cleanup semantic" {
-    if (true) return error.SkipZigTest;
     const TestCase = struct {
         diffs: []Diff,
         expected: []const Diff,
@@ -836,14 +865,40 @@ test "cleanup semantic" {
         },
     };
 
-    for (test_cases) |test_case| {
+    var end: usize = 0;
+    defer {
+        for (test_cases, 0..) |test_case, i| {
+            for (test_case.expected) |*diff| @constCast(diff).deinit(testing.allocator);
+            if (i > end) {
+                for (test_case.diffs) |*diff| @constCast(diff).deinit(testing.allocator);
+                testing.allocator.free(test_case.diffs);
+            }
+        }
+    }
+
+    for (test_cases, 0..) |test_case, i| {
+        end = i;
         var diffs = test_case.diffs;
         defer testing.allocator.free(diffs);
         defer for (diffs) |*diff| diff.deinit(testing.allocator);
-        defer for (test_case.expected) |*diff| @constCast(diff).deinit(testing.allocator);
 
-        dmp.diffCleanupSemantic(&diffs);
-        try testing.expectEqualDeep(test_case.expected, diffs);
+        try dmp.diffCleanupSemantic(&diffs);
+
+        const err: anyerror!void = blk: {
+            testing.expectEqual(test_case.expected.len, diffs.len) catch |err| break :blk err;
+            for (test_case.expected, diffs) |expected, diff| {
+                testing.expectEqual(expected.operation, diff.operation) catch |err| break :blk err;
+                testing.expectEqualStrings(expected.text, diff.text) catch |err| break :blk err;
+            }
+        };
+        err catch |e| {
+            std.debug.print("\n{d}\n", .{i + 1});
+            for (diffs) |diff| {
+                std.debug.print("  {s} - \"{s}\"\n", .{ @tagName(diff.operation), diff.text });
+            }
+            std.debug.print("\n", .{});
+            return e;
+        };
     }
 }
 
@@ -922,14 +977,30 @@ test "cleanup efficiency" {
             },
         };
 
-        for (test_cases) |test_case| {
+        var end: usize = 0;
+        defer {
+            for (test_cases, 0..) |test_case, i| {
+                for (test_case.expected) |*diff| @constCast(diff).deinit(testing.allocator);
+                if (i > end) {
+                    for (test_case.diffs) |*diff| @constCast(diff).deinit(testing.allocator);
+                    testing.allocator.free(test_case.diffs);
+                }
+            }
+        }
+
+        for (test_cases, 0..) |test_case, i| {
+            end = i;
             var diffs = test_case.diffs;
             defer testing.allocator.free(diffs);
             defer for (diffs) |*diff| diff.deinit(testing.allocator);
-            defer for (test_case.expected) |*diff| @constCast(diff).deinit(testing.allocator);
 
             dmp.diffCleanupEfficiency(&diffs);
-            try testing.expectEqualDeep(test_case.expected, diffs);
+
+            try testing.expectEqual(test_case.expected.len, diffs.len);
+            for (test_case.expected, diffs) |expected, diff| {
+                try testing.expectEqual(expected.operation, diff.operation);
+                try testing.expectEqualStrings(expected.text, diff.text);
+            }
         }
     }
 
@@ -959,7 +1030,12 @@ test "cleanup efficiency" {
             defer for (test_case.expected) |*diff| @constCast(diff).deinit(testing.allocator);
 
             dmp.diffCleanupEfficiency(&diffs);
-            try testing.expectEqualDeep(test_case.expected, diffs);
+
+            try testing.expectEqual(test_case.expected.len, diffs.len);
+            for (test_case.expected, diffs) |expected, diff| {
+                try testing.expectEqual(expected.operation, diff.operation);
+                try testing.expectEqualStrings(expected.text, diff.text);
+            }
         }
     }
 }
@@ -1079,7 +1155,7 @@ test "to from delta" {
     defer testing.allocator.free(delta3);
     try testing.expectEqualStrings("+ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz 0123456789 - _ . ! ~ * ' ( ) ; / ? : @ & = + $ , # ", delta3);
 
-    for ([_]TestCase{
+    const test_cases = [_]TestCase{
         .{ .text = "jumps over the lazyx", .delta = "=4\t-1\t+ed\t=6\t-3\t+a\t=5\t+old dog", .expected_error = DiffError.DeltaShorterThenSource, .expected_diffs = null },
         .{ .text = "umps over the lazy", .delta = "=4\t-1\t+ed\t=6\t-3\t+a\t=5\t+old dog", .expected_error = DiffError.DeltaLongerThenSource, .expected_diffs = null },
         .{ .text = "", .delta = "+%c3%xy", .expected_error = DiffError.DeltaContainsInvalidUTF8, .expected_diffs = null },
@@ -1091,7 +1167,9 @@ test "to from delta" {
         .{ .text = text1, .delta = delta1, .expected_error = null, .expected_diffs = diffs1 },
         .{ .text = text2, .delta = delta2, .expected_error = null, .expected_diffs = diffs2 },
         .{ .text = "", .delta = delta3, .expected_error = null, .expected_diffs = diffs3 },
-    }) |test_case| {
+    };
+
+    for (test_cases) |test_case| {
         defer if (test_case.expected_diffs) |diffs| for (diffs) |*diff| @constCast(diff).deinit(testing.allocator);
         if (dmp.diffFromDelta(test_case.text, test_case.delta)) |diffs| {
             defer testing.allocator.free(diffs);
@@ -1101,7 +1179,12 @@ test "to from delta" {
             try testing.expect(test_case.expected_error == null);
 
             try testing.expectEqual(test_case.expected_diffs.?.len, diffs.len);
-            try testing.expectEqualDeep(test_case.expected_diffs.?, diffs);
+
+            try testing.expectEqual(test_case.expected_diffs.?.len, diffs.len);
+            for (test_case.expected_diffs.?, diffs) |expected, diff| {
+                try testing.expectEqual(expected.operation, diff.operation);
+                try testing.expectEqualStrings(expected.text, diff.text);
+            }
         } else |err| {
             try testing.expect(test_case.expected_diffs == null);
             try testing.expect(test_case.expected_error != null);
@@ -1207,7 +1290,11 @@ test "bisect" {
         defer testing.allocator.free(actual);
         defer for (actual) |*diff| diff.deinit();
 
-        try testing.expectEqualDeep(test_case.expected, actual);
+        try testing.expectEqual(test_case.expected.len, actual.len);
+        for (test_case.expected, actual) |expected, diff| {
+            try testing.expectEqual(expected.operation, diff.operation);
+            try testing.expectEqualStrings(expected.text, diff.text);
+        }
     }
 
     {
@@ -1220,7 +1307,11 @@ test "bisect" {
         defer testing.allocator.free(actual);
         defer for (actual) |*diff| diff.deinit();
 
-        try testing.expectEqualDeep(diffs, actual);
+        try testing.expectEqual(diffs.len, actual.len);
+        for (diffs, actual) |expected, diff| {
+            try testing.expectEqual(expected.operation, diff.operation);
+            try testing.expectEqualStrings(expected.text, diff.text);
+        }
     }
 }
 
@@ -1296,7 +1387,11 @@ test "diff main" {
             defer testing.allocator.free(actual);
             defer for (actual) |*diff| diff.deinit(testing.allocator);
 
-            try testing.expectEqualDeep(test_case.expected, actual);
+            try testing.expectEqual(test_case.expected.len, actual.len);
+            for (test_case.expected, actual) |expected, diff| {
+                try testing.expectEqual(expected.operation, diff.operation);
+                try testing.expectEqualStrings(expected.text, diff.text);
+            }
         }
     }
 
@@ -1391,7 +1486,11 @@ test "diff main" {
             defer testing.allocator.free(actual);
             defer for (actual) |*diff| diff.deinit(testing.allocator);
 
-            try testing.expectEqualDeep(test_case.expected, actual);
+            try testing.expectEqual(test_case.expected.len, actual.len);
+            for (test_case.expected, actual) |expected, diff| {
+                try testing.expectEqual(expected.operation, diff.operation);
+                try testing.expectEqualStrings(expected.text, diff.text);
+            }
         }
     }
 
@@ -1405,7 +1504,11 @@ test "diff main" {
         defer testing.allocator.free(actual);
         defer for (actual) |*diff| diff.deinit(testing.allocator);
 
-        try testing.expectEqualDeep(diffs, actual);
+        try testing.expectEqual(diffs, actual.len);
+        for (diffs, actual) |expected, diff| {
+            try testing.expectEqual(expected.operation, diff.operation);
+            try testing.expectEqualStrings(expected.text, diff.text);
+        }
     }
 }
 
@@ -1526,5 +1629,9 @@ test "partial line index" {
     };
     defer for (expect) |*diff| @constCast(diff).deinit(testing.allocator);
 
-    try testing.expectEqualDeep(expect, diffs);
+    try testing.expectEqual(expect.len, diffs.len);
+    for (expect, diffs) |expected, diff| {
+        try testing.expectEqual(expected.operation, diff.operation);
+        try testing.expectEqualStrings(expected.text, diff.text);
+    }
 }

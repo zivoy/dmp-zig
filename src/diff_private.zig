@@ -342,10 +342,39 @@ pub fn diffCharsToLines(allocator: Allocator, diffs: *[]DMP.Diff, line_array: []
 
 ///Determine if the suffix of one string is the prefix of another.
 pub fn diffCommonOverlap(text1: []const u8, text2: []const u8) usize {
-    _ = text1;
-    _ = text2;
+    if (text1.len == 0 and text2.len == 0) return 0;
+    var t1 = text1;
+    var t2 = text2;
 
-    @compileError("Not Implemented");
+    // Truncate the longer string.
+    if (text1.len > text2.len) {
+        t1 = text1[text1.len - text2.len ..];
+    } else {
+        t2 = text2[0..text1.len];
+    }
+
+    const text_length = @min(text1.len, text2.len);
+    // Quick check for worse case.
+    if (std.mem.eql(u8, t1, t2)) {
+        return text_length;
+    }
+
+    // Start by looking for a single character match
+    // and increase length until no match is found.
+    // Performance analysis: http://neil.fraser.name/news/2010/11/04/
+    var best: usize = 0;
+    var length: usize = 1;
+    while (true) {
+        const pattern = t1[text_length - length ..];
+        const found = std.mem.indexOf(u8, t2, pattern) orelse break;
+        length += found;
+        if (found == 0 or std.mem.eql(u8, t1[text_length - length ..], t2[0..text_length])) {
+            best = length;
+            length += 1;
+        }
+    }
+
+    return best;
 }
 
 ///Do the two texts share a substring which is at least half the length of the longer text?
@@ -461,12 +490,13 @@ pub fn diffHalfMatchI(allocator: Allocator, longtext: []const u8, shorttext: []c
 ///boundary falls on logical boundaries.
 ///Scores range from 6 (best) to 0 (worst).
 pub fn diffCleanupSemanticScore(one: []const u8, two: []const u8) usize {
-    if (one.len == 0 and two.len == 0) {
+    if (one.len == 0 or two.len == 0) {
         // Edges are the best.
         return 6;
     }
 
-    const char1 = one[one.length() - 1];
+    // TODO: these need to operate on utf8 chars
+    const char1 = one[one.len - 1];
     const char2 = two[0];
     const non_alpha_numeric1 = switch (char1) {
         '0'...'9', 'a'...'z', 'A'...'Z' => false,
@@ -477,14 +507,8 @@ pub fn diffCleanupSemanticScore(one: []const u8, two: []const u8) usize {
         else => true,
     };
 
-    const whitespace1 = non_alpha_numeric1 and switch (char1) {
-        '\t', '\r', '\n', 0x0C => true,
-        else => false,
-    };
-    const whitespace2 = non_alpha_numeric2 and switch (char2) {
-        '\t', '\r', '\n', 0x0C => true,
-        else => false,
-    };
+    const whitespace1 = non_alpha_numeric1 and utils.isWhitespace(char1);
+    const whitespace2 = non_alpha_numeric2 and utils.isWhitespace(char2);
 
     const line_break1 = whitespace1 and switch (char1) {
         '\r', '\n' => true,
