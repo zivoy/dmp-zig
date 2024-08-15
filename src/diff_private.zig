@@ -204,20 +204,15 @@ fn diffBisectSplitTimer(allocator: Allocator, diff_timeout: f32, text1: []const 
     const text2b = text2[y..];
 
     var diffs1 = try diffMainStringStringBoolTimeoutTimer(allocator, diff_timeout, text1a, text2a, false, ns_time_limit, timer);
-    const diffs2 = try diffMainStringStringBoolTimeoutTimer(allocator, diff_timeout, text1b, text2b, false, ns_time_limit, timer);
+    errdefer allocator.free(diffs1);
+    errdefer for (diffs1) |*diff| diff.deinit(allocator);
 
-    const len_start = diffs1.len;
-    const new_len = diffs1.len + diffs2.len;
-    if (!allocator.resize(diffs1, new_len)) {
-        //failed to resize
-        const new_diffs = try allocator.alloc(DMP.Diff, new_len);
-        @memcpy(new_diffs[0..len_start], diffs1);
-        @memset(diffs1, undefined);
-        allocator.free(new_diffs);
-        diffs1 = new_diffs;
-    }
-    diffs1.len = new_len;
-    @memcpy(diffs1.ptr[len_start..new_len], diffs2);
+    const diffs2 = try diffMainStringStringBoolTimeoutTimer(allocator, diff_timeout, text1b, text2b, false, ns_time_limit, timer);
+    defer allocator.free(diffs2);
+    defer for (diffs2) |*diff| diff.deinit(allocator);
+
+    const old_len = try utils.resize(diff_funcs.Diff, allocator, &diffs1, diffs1.len + diffs2.len);
+    @memcpy(diffs1.ptr[old_len..], diffs2);
 
     return diffs1;
 }
@@ -266,18 +261,8 @@ pub fn diffLinesToCharsMunge(allocator: Allocator, text_ref: *[]u8, line_array: 
         const len = std.unicode.utf8CodepointSequenceLength(@intCast(line_value.?)) catch unreachable;
         // TODO: resize less often by doing capacity
         if (codes_len + len > idx + line.len) {
-            const old_len = text.len;
             const new_len = text.len + (len - ((idx + line.len) - codes_len));
-            text.len = new_len;
-            // std.debug.print("\nresizing {d} -> {d} ---- \n", .{ lines.buffer.len, new_len });
-            if (!allocator.resize(text.ptr[0..old_len], new_len)) {
-                //failed to resize
-                const new_text = try allocator.alloc(u8, new_len);
-                @memcpy(new_text, text.ptr[0..old_len]);
-                @memset(text.ptr[0..old_len], undefined);
-                allocator.free(text[0..old_len]);
-                text = new_text;
-            }
+            const old_len = try utils.resize(u8, allocator, &text, new_len);
             if (codes_len + len > old_len) std.mem.copyBackwards(u8, text[codes_len + len .. new_len], text[codes_len + 1 .. old_len]);
         }
         _ = std.unicode.utf8Encode(@intCast(line_value.?), text[codes_len .. codes_len + len]) catch @panic("couldent write codepoint for some reason");
@@ -285,18 +270,7 @@ pub fn diffLinesToCharsMunge(allocator: Allocator, text_ref: *[]u8, line_array: 
     }
 
     if (codes_len != text.len) {
-        const len_start = text.len;
-        text.len = codes_len;
-        // std.debug.print("\nresizing {d} -> {d} ---- \n", .{ lines.buffer.len, codes_len });
-        if (!allocator.resize(text.ptr[0..len_start], codes_len)) {
-            //failed to resize
-            // std.debug.print("failed to resize\n", .{});
-            const new_text = try allocator.alloc(u8, codes_len);
-            @memcpy(new_text, text.ptr[0..codes_len]);
-            @memset(text.ptr[0..len_start], undefined);
-            allocator.free(text.ptr[0..len_start]);
-            text = new_text;
-        }
+        _ = try utils.resize(u8, allocator, &text, codes_len);
     }
     text_ref.* = text;
 }
@@ -321,14 +295,7 @@ pub fn diffCharsToLines(allocator: Allocator, diffs: *[]DMP.Diff, line_array: []
             len += line_array[codepoint].len;
         }
 
-        if (!allocator.resize(diff.text, len)) {
-            //failed to resize
-            const new_text = try allocator.alloc(u8, len);
-            @memset(diff.text, undefined);
-            allocator.free(diff.text);
-            diff.*.text = new_text;
-        }
-        diff.text.len = len;
+        _ = try utils.resize(u8, allocator, &diff.text, len);
 
         i = 0;
         for (text.items) |codepoint| {

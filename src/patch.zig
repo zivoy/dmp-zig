@@ -426,20 +426,15 @@ pub fn patchAddPadding(allocator: Allocator, patch_margin: u16, patches: *PatchL
     } else if (padding_length > first_patch.diffs.items[0].text.len) {
         // Grow first equality.
         const extra_length = padding_length - first_patch.diffs.items[0].text.len;
-        const old_text_len = first_patch.diffs.items[0].text.len;
-        var first_diff = first_patch.diffs.items[0];
-        if (!allocator.resize(first_diff.text, padding_length)) {
-            const new_first_text = try allocator.alloc(u8, padding_length);
-            @memcpy(new_first_text[padding_length - old_text_len .. padding_length], first_diff.text[0..old_text_len]);
-            @memset(first_diff.text, undefined);
-            allocator.free(first_diff.text);
-            first_diff.text = new_first_text;
-        } else {
-            std.mem.copyBackwards(u8, first_diff.text[padding_length - old_text_len .. padding_length], first_diff.text[0..old_text_len]);
-        }
-        first_diff.text.len = padding_length;
+        const old_len = try utils.resize(u8, allocator, &first_patch.diffs.items[0].text.text, padding_length);
 
-        @memcpy(first_diff.text, null_padding[old_text_len..]);
+        std.mem.copyBackwards(
+            u8,
+            first_patch.diffs.items[0].text[padding_length - old_len .. padding_length],
+            first_patch.diffs.items[0].text[0..old_len],
+        );
+
+        @memcpy(first_patch.diffs.items[0].text, null_padding[old_len..]);
 
         first_patch.start1 -= extra_length;
         first_patch.start2 -= extra_length;
@@ -458,17 +453,8 @@ pub fn patchAddPadding(allocator: Allocator, patch_margin: u16, patches: *PatchL
         // Grow last equality.
         const extra_length = padding_length - last_patch.diffs.getLast().text.len;
 
-        var last_diff = last_patch.diffs.getLast();
-        if (!allocator.resize(last_diff.text, padding_length)) {
-            const new_last_text = try allocator.alloc(u8, padding_length);
-            @memcpy(new_last_text, last_diff.text);
-            @memset(last_diff.text, undefined);
-            allocator.free(last_diff.text);
-            last_patch.diffs.items[last_patch.diffs.items.len - 1].text = new_last_text;
-        }
-        last_diff.text.len = padding_length;
-
-        @memcpy(last_diff.text[padding_length - extra_length ..], null_padding[0..extra_length]);
+        _ = try utils.resize(u8, allocator, &last_patch.diffs.items[last_patch.diffs.items.len - 1].text, padding_length);
+        @memcpy(last_patch.diffs.getLast().text[padding_length - extra_length ..], null_padding[0..extra_length]);
 
         last_patch.length1 += extra_length;
         last_patch.length2 += extra_length;
@@ -575,17 +561,8 @@ pub fn patchSplitMax(comptime MatchMaxContainer: type, allocator: Allocator, pat
                 patch.length2 += postcontext.len;
                 if (patch.diffs.items.len != 0 and patch.diffs.getLast().operation == .equal) {
                     var last_diff = patch.diffs.getLast();
-                    const old_diff_text_len = last_diff.text.len;
-                    const new_len = old_diff_text_len + postcontext.len;
-                    if (!allocator.resize(last_diff.text, new_len)) {
-                        const new_text = try allocator.alloc(u8, new_len);
-                        @memcpy(new_text, last_diff.text);
-                        @memset(last_diff.text, undefined);
-                        allocator.free(last_diff.text);
-                        last_diff.text = new_text;
-                    }
-                    last_diff.text.len = new_len;
-                    @memcpy(last_diff.text[old_diff_text_len..], postcontext);
+                    const old_len = utils.resize(u8, allocator, &last_diff.text, last_diff.text.len + postcontext.len);
+                    @memcpy(last_diff.text[old_len..], postcontext);
                 } else {
                     try patch.diffs.append(allocator, try Diff.fromSlice(allocator, postcontext, .equal));
                 }

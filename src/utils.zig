@@ -24,7 +24,6 @@ pub fn getIdxOrNull(comptime T: type, arrayList: std.ArrayList(T), idx: usize) ?
     return arrayList.items[idx];
 }
 
-// TODO: use this funciton more often
 ///resizes a slice, returns the old size
 pub fn resize(comptime T: type, allocator: std.mem.Allocator, slice: *[]T, new_len: usize) !usize {
     const len_start = slice.len;

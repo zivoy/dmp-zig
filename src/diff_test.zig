@@ -1504,7 +1504,7 @@ test "diff main" {
         defer testing.allocator.free(actual);
         defer for (actual) |*diff| diff.deinit(testing.allocator);
 
-        try testing.expectEqual(diffs, actual.len);
+        try testing.expectEqual(diffs.len, actual.len);
         for (diffs, actual) |expected, diff| {
             try testing.expectEqual(expected.operation, diff.operation);
             try testing.expectEqualStrings(expected.text, diff.text);
