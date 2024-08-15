@@ -3,6 +3,7 @@ const std = @import("std");
 
 const Diff = @import("diff.zig").Diff;
 const Patch = @import("patch.zig").Patch;
+const PatchList = @import("patch.zig").PatchList;
 const PatchError = @import("patch.zig").PatchError;
 
 const testing = std.testing;
@@ -103,18 +104,18 @@ test "patch make and patch to text" {
         .{ .input1 = .{ .text = "" }, .input2 = .{ .text = "" }, .input3 = .none, .expected = "" },
         .{ .input1 = .{ .text = text2 }, .input2 = .{ .text = text1 }, .input3 = .none, .expected = "@@ -1,8 +1,7 @@\n Th\n-at\n+e\n  qui\n@@ -21,17 +21,18 @@\n jump\n-ed\n+s\n  over \n-a\n+the\n  laz\n" },
         .{ .input1 = .{ .text = text1 }, .input2 = .{ .text = text2 }, .input3 = .none, .expected = "@@ -1,11 +1,12 @@\n Th\n-e\n+at\n  quick b\n@@ -22,18 +22,17 @@\n jump\n-s\n+ed\n  over \n-the\n+a\n  laz\n" },
-        .{ .input1 = .{ .diffs = dmp.diffMainStringStringBool(text1, text2, false) }, .input2 = .none, .input3 = .none, .expected = "@@ -1,11 +1,12 @@\n Th\n-e\n+at\n  quick b\n@@ -22,18 +22,17 @@\n jump\n-s\n+ed\n  over \n-the\n+a\n  laz\n" },
-        .{ .input1 = .{ .text = text1 }, .input2 = .{ .diffs = dmp.diffMainStringStringBool(text1, text2, false) }, .input3 = .none, .expected = "@@ -1,11 +1,12 @@\n Th\n-e\n+at\n  quick b\n@@ -22,18 +22,17 @@\n jump\n-s\n+ed\n  over \n-the\n+a\n  laz\n" },
-        .{ .input1 = .{ .text = text1 }, .input2 = .{ .text = text2 }, .input3 = .{ .diffs = dmp.diffMainStringStringBool(text1, text2, false) }, .expected = "@@ -1,11 +1,12 @@\n Th\n-e\n+at\n  quick b\n@@ -22,18 +22,17 @@\n jump\n-s\n+ed\n  over \n-the\n+a\n  laz\n" },
+        .{ .input1 = .{ .diffs = try dmp.diffMainStringStringBool(text1, text2, false) }, .input2 = .none, .input3 = .none, .expected = "@@ -1,11 +1,12 @@\n Th\n-e\n+at\n  quick b\n@@ -22,18 +22,17 @@\n jump\n-s\n+ed\n  over \n-the\n+a\n  laz\n" },
+        .{ .input1 = .{ .text = text1 }, .input2 = .{ .diffs = try dmp.diffMainStringStringBool(text1, text2, false) }, .input3 = .none, .expected = "@@ -1,11 +1,12 @@\n Th\n-e\n+at\n  quick b\n@@ -22,18 +22,17 @@\n jump\n-s\n+ed\n  over \n-the\n+a\n  laz\n" },
+        .{ .input1 = .{ .text = text1 }, .input2 = .{ .text = text2 }, .input3 = .{ .diffs = try dmp.diffMainStringStringBool(text1, text2, false) }, .expected = "@@ -1,11 +1,12 @@\n Th\n-e\n+at\n  quick b\n@@ -22,18 +22,17 @@\n jump\n-s\n+ed\n  over \n-the\n+a\n  laz\n" },
         .{ .input1 = .{ .text = "`1234567890-=[]\\;',./" }, .input2 = .{ .text = "~!@#$%^&*()_+{}|:\"<>?" }, .input3 = .none, .expected = "@@ -1,21 +1,21 @@\n-%601234567890-=%5B%5D%5C;',./\n+~!@#$%25%5E&*()_+%7B%7D%7C:%22%3C%3E?\n" },
         .{ .input1 = .{ .text = "abcdef" ** 100 }, .input2 = .{ .text = "abcdef" ** 100 ++ "123" }, .input3 = .none, .expected = "@@ -573,28 +573,31 @@\n cdefabcdefabcdefabcdefabcdef\n+123\n" },
         .{ .input1 = .{ .text = "2016-09-01T03:07:14.807830741Z" }, .input2 = .{ .text = "2016-09-01T03:07:15.154800781Z" }, .input3 = .none, .expected = "@@ -15,16 +15,16 @@\n 07:1\n+5.15\n 4\n-.\n 80\n+0\n 78\n-3074\n 1Z\n" },
     }) |test_case| {
-        const patches: DMP.PatchList = blk: {
+        const patches: PatchList = blk: {
             switch (test_case.input3) {
                 .diffs => |diffs| {
                     defer testing.allocator.free(diffs);
-                    defer for (diffs) |diff| diff.deinit(testing.allocator);
+                    defer for (diffs) |*diff| diff.deinit(testing.allocator);
                     break :blk try dmp.patchMakeStringStringDiffs(test_case.input1.text, test_case.input2.text, diffs);
                 },
                 .text => unreachable,
@@ -123,7 +124,7 @@ test "patch make and patch to text" {
             switch (test_case.input2) {
                 .diffs => |diffs| {
                     defer testing.allocator.free(diffs);
-                    defer for (diffs) |diff| diff.deinit(testing.allocator);
+                    defer for (diffs) |*diff| diff.deinit(testing.allocator);
                     break :blk try dmp.patchMakeStringDiffs(test_case.input1.text, diffs);
                 },
                 .text => |text| break :blk try dmp.patchMakeStringString(test_case.input1.text, text),
@@ -132,7 +133,7 @@ test "patch make and patch to text" {
             switch (test_case.input1) {
                 .diffs => |diffs| {
                     defer testing.allocator.free(diffs);
-                    defer for (diffs) |diff| diff.deinit(testing.allocator);
+                    defer for (diffs) |*diff| diff.deinit(testing.allocator);
                     break :blk try dmp.patchMakeDiffs(diffs);
                 },
                 .text => unreachable,
@@ -155,7 +156,7 @@ test "patch make and patch to text" {
 
     const diffs = dmp.diffMainStringStringBool(text1, text2, true);
     defer testing.allocator.free(diffs);
-    defer for (diffs) |diff| diff.deinit(testing.allocator);
+    defer for (diffs) |*diff| diff.deinit(testing.allocator);
     try testing.expectEqual(text1, dmp.diffText1(diffs));
     try testing.expectEqual(text2, dmp.diffText2(diffs));
 

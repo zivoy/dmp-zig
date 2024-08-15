@@ -477,7 +477,7 @@ test "cleanup semantic lossless" {
 
     const dmp = DMP.init(testing.allocator);
 
-    for ([_]TestCase{
+    const test_cases = [_]TestCase{
         .{
             .diffs = testDiffList(&.{}),
             .expected = &.{},
@@ -588,11 +588,13 @@ test "cleanup semantic lossless" {
                 try Diff.fromString(testing.allocator, "♖♖", .equal),
             },
         },
-    }) |test_case| {
+    };
+
+    for (test_cases) |test_case| {
         var diffs = test_case.diffs;
         defer testing.allocator.free(diffs);
         defer for (diffs) |*diff| diff.deinit(testing.allocator);
-        defer for (test_case.expected) |*diff| diff.deinit(testing.allocator);
+        defer for (test_case.expected) |*diff| @constCast(diff).deinit(testing.allocator);
 
         dmp.diffCleanupSemanticLossless(&diffs);
         try testing.expectEqualDeep(test_case.expected, diffs);
@@ -608,7 +610,7 @@ test "cleanup semantic" {
 
     const dmp = DMP.init(testing.allocator);
 
-    for ([_]TestCase{
+    const test_cases = [_]TestCase{
         .{
             .diffs = testDiffList(&.{}),
             .expected = &.{},
@@ -832,11 +834,13 @@ test "cleanup semantic" {
                 try Diff.fromString(testing.allocator, " 보이즈", .delete),
             },
         },
-    }) |test_case| {
+    };
+
+    for (test_cases) |test_case| {
         var diffs = test_case.diffs;
         defer testing.allocator.free(diffs);
         defer for (diffs) |*diff| diff.deinit(testing.allocator);
-        defer for (test_case.expected) |*diff| diff.deinit(testing.allocator);
+        defer for (test_case.expected) |*diff| @constCast(diff).deinit(testing.allocator);
 
         dmp.diffCleanupSemantic(&diffs);
         try testing.expectEqualDeep(test_case.expected, diffs);
@@ -854,101 +858,109 @@ test "cleanup efficiency" {
 
     dmp.diff_edit_cost = 4;
 
-    for ([_]TestCase{
-        .{
-            .diffs = testDiffList(&.{}),
-            .expected = &.{},
-        },
-        .{
-            .diffs = testDiffList(&.{
-                try Diff.fromString(testing.allocator, "ab", .delete),
-                try Diff.fromString(testing.allocator, "12", .insert),
-                try Diff.fromString(testing.allocator, "wxyz", .equal),
-                try Diff.fromString(testing.allocator, "cd", .delete),
-                try Diff.fromString(testing.allocator, "34", .insert),
-            }),
-            .expected = &.{
-                try Diff.fromString(testing.allocator, "ab", .delete),
-                try Diff.fromString(testing.allocator, "12", .insert),
-                try Diff.fromString(testing.allocator, "wxyz", .equal),
-                try Diff.fromString(testing.allocator, "cd", .delete),
-                try Diff.fromString(testing.allocator, "34", .insert),
+    {
+        const test_cases = [_]TestCase{
+            .{
+                .diffs = testDiffList(&.{}),
+                .expected = &.{},
             },
-        },
-        .{
-            .diffs = testDiffList(&.{
-                try Diff.fromString(testing.allocator, "ab", .delete),
-                try Diff.fromString(testing.allocator, "12", .insert),
-                try Diff.fromString(testing.allocator, "xyz", .equal),
-                try Diff.fromString(testing.allocator, "cd", .delete),
-                try Diff.fromString(testing.allocator, "34", .insert),
-            }),
-            .expected = &.{
-                try Diff.fromString(testing.allocator, "abxyzcd", .delete),
-                try Diff.fromString(testing.allocator, "12xyz34", .insert),
+            .{
+                .diffs = testDiffList(&.{
+                    try Diff.fromString(testing.allocator, "ab", .delete),
+                    try Diff.fromString(testing.allocator, "12", .insert),
+                    try Diff.fromString(testing.allocator, "wxyz", .equal),
+                    try Diff.fromString(testing.allocator, "cd", .delete),
+                    try Diff.fromString(testing.allocator, "34", .insert),
+                }),
+                .expected = &.{
+                    try Diff.fromString(testing.allocator, "ab", .delete),
+                    try Diff.fromString(testing.allocator, "12", .insert),
+                    try Diff.fromString(testing.allocator, "wxyz", .equal),
+                    try Diff.fromString(testing.allocator, "cd", .delete),
+                    try Diff.fromString(testing.allocator, "34", .insert),
+                },
             },
-        },
-        .{
-            .diffs = testDiffList(&.{
-                try Diff.fromString(testing.allocator, "12", .insert),
-                try Diff.fromString(testing.allocator, "x", .equal),
-                try Diff.fromString(testing.allocator, "cd", .delete),
-                try Diff.fromString(testing.allocator, "34", .insert),
-            }),
-            .expected = &.{
-                try Diff.fromString(testing.allocator, "xcd", .delete),
-                try Diff.fromString(testing.allocator, "12x34", .insert),
+            .{
+                .diffs = testDiffList(&.{
+                    try Diff.fromString(testing.allocator, "ab", .delete),
+                    try Diff.fromString(testing.allocator, "12", .insert),
+                    try Diff.fromString(testing.allocator, "xyz", .equal),
+                    try Diff.fromString(testing.allocator, "cd", .delete),
+                    try Diff.fromString(testing.allocator, "34", .insert),
+                }),
+                .expected = &.{
+                    try Diff.fromString(testing.allocator, "abxyzcd", .delete),
+                    try Diff.fromString(testing.allocator, "12xyz34", .insert),
+                },
             },
-        },
-        .{
-            .diffs = testDiffList(&.{
-                try Diff.fromString(testing.allocator, "ab", .delete),
-                try Diff.fromString(testing.allocator, "12", .insert),
-                try Diff.fromString(testing.allocator, "xy", .equal),
-                try Diff.fromString(testing.allocator, "34", .insert),
-                try Diff.fromString(testing.allocator, "z", .equal),
-                try Diff.fromString(testing.allocator, "cd", .delete),
-                try Diff.fromString(testing.allocator, "56", .insert),
-            }),
-            .expected = &.{
-                try Diff.fromString(testing.allocator, "abxyzcd", .delete),
-                try Diff.fromString(testing.allocator, "12xy34z56", .insert),
+            .{
+                .diffs = testDiffList(&.{
+                    try Diff.fromString(testing.allocator, "12", .insert),
+                    try Diff.fromString(testing.allocator, "x", .equal),
+                    try Diff.fromString(testing.allocator, "cd", .delete),
+                    try Diff.fromString(testing.allocator, "34", .insert),
+                }),
+                .expected = &.{
+                    try Diff.fromString(testing.allocator, "xcd", .delete),
+                    try Diff.fromString(testing.allocator, "12x34", .insert),
+                },
             },
-        },
-    }) |test_case| {
-        var diffs = test_case.diffs;
-        defer testing.allocator.free(diffs);
-        defer for (diffs) |*diff| diff.deinit(testing.allocator);
-        defer for (test_case.expected) |*diff| diff.deinit(testing.allocator);
+            .{
+                .diffs = testDiffList(&.{
+                    try Diff.fromString(testing.allocator, "ab", .delete),
+                    try Diff.fromString(testing.allocator, "12", .insert),
+                    try Diff.fromString(testing.allocator, "xy", .equal),
+                    try Diff.fromString(testing.allocator, "34", .insert),
+                    try Diff.fromString(testing.allocator, "z", .equal),
+                    try Diff.fromString(testing.allocator, "cd", .delete),
+                    try Diff.fromString(testing.allocator, "56", .insert),
+                }),
+                .expected = &.{
+                    try Diff.fromString(testing.allocator, "abxyzcd", .delete),
+                    try Diff.fromString(testing.allocator, "12xy34z56", .insert),
+                },
+            },
+        };
 
-        dmp.diffCleanupEfficiency(&diffs);
-        try testing.expectEqualDeep(test_case.expected, diffs);
+        for (test_cases) |test_case| {
+            var diffs = test_case.diffs;
+            defer testing.allocator.free(diffs);
+            defer for (diffs) |*diff| diff.deinit(testing.allocator);
+            defer for (test_case.expected) |*diff| @constCast(diff).deinit(testing.allocator);
+
+            dmp.diffCleanupEfficiency(&diffs);
+            try testing.expectEqualDeep(test_case.expected, diffs);
+        }
     }
 
     dmp.diff_edit_cost = 4;
 
-    for ([_]TestCase{
-        .{
-            .diffs = testDiffList(&.{
-                try Diff.fromString(testing.allocator, "ab", .delete),
-                try Diff.fromString(testing.allocator, "12", .insert),
-                try Diff.fromString(testing.allocator, "wxyz", .equal),
-                try Diff.fromString(testing.allocator, "cd", .delete),
-                try Diff.fromString(testing.allocator, "34", .insert),
-            }),
-            .expected = &.{
-                try Diff.fromString(testing.allocator, "abwxyzcd", .delete),
-                try Diff.fromString(testing.allocator, "12wxyz34", .insert),
+    {
+        const test_cases = [_]TestCase{
+            .{
+                .diffs = testDiffList(&.{
+                    try Diff.fromString(testing.allocator, "ab", .delete),
+                    try Diff.fromString(testing.allocator, "12", .insert),
+                    try Diff.fromString(testing.allocator, "wxyz", .equal),
+                    try Diff.fromString(testing.allocator, "cd", .delete),
+                    try Diff.fromString(testing.allocator, "34", .insert),
+                }),
+                .expected = &.{
+                    try Diff.fromString(testing.allocator, "abwxyzcd", .delete),
+                    try Diff.fromString(testing.allocator, "12wxyz34", .insert),
+                },
             },
-        },
-    }) |test_case| {
-        var diffs = test_case.diffs;
-        defer testing.allocator.free(diffs);
-        defer for (diffs) |*diff| diff.deinit(testing.allocator);
-        defer for (test_case.expected) |*diff| diff.deinit(testing.allocator);
+        };
 
-        dmp.diffCleanupEfficiency(&diffs);
-        try testing.expectEqualDeep(test_case.expected, diffs);
+        for (test_cases) |test_case| {
+            var diffs = test_case.diffs;
+            defer testing.allocator.free(diffs);
+            defer for (diffs) |*diff| diff.deinit(testing.allocator);
+            defer for (test_case.expected) |*diff| @constCast(diff).deinit(testing.allocator);
+
+            dmp.diffCleanupEfficiency(&diffs);
+            try testing.expectEqualDeep(test_case.expected, diffs);
+        }
     }
 }
 
@@ -1222,157 +1234,172 @@ test "diff main" {
 
     var dmp = DMP.init(testing.allocator);
 
-    // Perform a trivial diff.
-    for ([_]TestCase{ .{
-        .text1 = "",
-        .text2 = "",
-        .expected = &.{},
-    }, .{
-        .text1 = "abc",
-        .text2 = "abc",
-        .expected = &.{try Diff.fromString(testing.allocator, "abc", .equal)},
-    }, .{
-        .text1 = "abc",
-        .text2 = "ab123c",
-        .expected = &.{
-            try Diff.fromString(testing.allocator, "ab", .equal),
-            try Diff.fromString(testing.allocator, "123", .insert),
-            try Diff.fromString(testing.allocator, "c", .equal),
-        },
-    }, .{
-        .text1 = "a123bc",
-        .text2 = "abc",
-        .expected = &.{
-            try Diff.fromString(testing.allocator, "a", .equal),
-            try Diff.fromString(testing.allocator, "123", .delete),
-            try Diff.fromString(testing.allocator, "bc", .equal),
-        },
-    }, .{
-        .text1 = "abc",
-        .text2 = "a123b456c",
-        .expected = &.{
-            try Diff.fromString(testing.allocator, "a", .equal),
-            try Diff.fromString(testing.allocator, "123", .insert),
-            try Diff.fromString(testing.allocator, "b", .equal),
-            try Diff.fromString(testing.allocator, "456", .insert),
-            try Diff.fromString(testing.allocator, "c", .equal),
-        },
-    }, .{
-        .text1 = "a123b456c",
-        .text2 = "abc",
-        .expected = &.{
-            try Diff.fromString(testing.allocator, "a", .equal),
-            try Diff.fromString(testing.allocator, "123", .delete),
-            try Diff.fromString(testing.allocator, "b", .equal),
-            try Diff.fromString(testing.allocator, "456", .delete),
-            try Diff.fromString(testing.allocator, "c", .equal),
-        },
-    } }) |test_case| {
-        defer if (test_case.expected) |diffs| for (diffs) |*diff| diff.deinit(testing.allocator);
+    {
+        const test_cases = [_]TestCase{
+            .{
+                .text1 = "",
+                .text2 = "",
+                .expected = &.{},
+            },
+            .{
+                .text1 = "abc",
+                .text2 = "abc",
+                .expected = &.{try Diff.fromString(testing.allocator, "abc", .equal)},
+            },
+            .{
+                .text1 = "abc",
+                .text2 = "ab123c",
+                .expected = &.{
+                    try Diff.fromString(testing.allocator, "ab", .equal),
+                    try Diff.fromString(testing.allocator, "123", .insert),
+                    try Diff.fromString(testing.allocator, "c", .equal),
+                },
+            },
+            .{
+                .text1 = "a123bc",
+                .text2 = "abc",
+                .expected = &.{
+                    try Diff.fromString(testing.allocator, "a", .equal),
+                    try Diff.fromString(testing.allocator, "123", .delete),
+                    try Diff.fromString(testing.allocator, "bc", .equal),
+                },
+            },
+            .{
+                .text1 = "abc",
+                .text2 = "a123b456c",
+                .expected = &.{
+                    try Diff.fromString(testing.allocator, "a", .equal),
+                    try Diff.fromString(testing.allocator, "123", .insert),
+                    try Diff.fromString(testing.allocator, "b", .equal),
+                    try Diff.fromString(testing.allocator, "456", .insert),
+                    try Diff.fromString(testing.allocator, "c", .equal),
+                },
+            },
+            .{
+                .text1 = "a123b456c",
+                .text2 = "abc",
+                .expected = &.{
+                    try Diff.fromString(testing.allocator, "a", .equal),
+                    try Diff.fromString(testing.allocator, "123", .delete),
+                    try Diff.fromString(testing.allocator, "b", .equal),
+                    try Diff.fromString(testing.allocator, "456", .delete),
+                    try Diff.fromString(testing.allocator, "c", .equal),
+                },
+            },
+        };
 
-        const actual = try dmp.diffMainStringStringBool(test_case.text1, test_case.text2, false);
-        defer testing.allocator.free(actual);
-        defer for (actual) |*diff| diff.deinit(testing.allocator);
+        // Perform a trivial diff.
+        for (test_cases) |test_case| {
+            defer for (test_case.expected) |*diff| @constCast(diff).deinit(testing.allocator);
 
-        try testing.expectEqualDeep(test_case.expected, actual);
+            const actual = try dmp.diffMainStringStringBool(test_case.text1, test_case.text2, false);
+            defer testing.allocator.free(actual);
+            defer for (actual) |*diff| diff.deinit(testing.allocator);
+
+            try testing.expectEqualDeep(test_case.expected, actual);
+        }
     }
 
     // Perform a real diff and switch off the timeout.
     dmp.diff_timeout = 0;
 
-    for ([_]TestCase{
-        .{
-            .text1 = "a",
-            .text2 = "b",
-            .expected = &.{
-                try Diff.fromString(testing.allocator, "a", .delete),
-                try Diff.fromString(testing.allocator, "b", .insert),
+    {
+        const test_cases = [_]TestCase{
+            .{
+                .text1 = "a",
+                .text2 = "b",
+                .expected = &.{
+                    try Diff.fromString(testing.allocator, "a", .delete),
+                    try Diff.fromString(testing.allocator, "b", .insert),
+                },
             },
-        },
-        .{
-            .text1 = "Apples are a fruit.",
-            .text2 = "Bananas are also fruit.",
-            .expected = &.{
-                try Diff.fromString(testing.allocator, "Apple", .delete),
-                try Diff.fromString(testing.allocator, "Banana", .insert),
-                try Diff.fromString(testing.allocator, "s are a", .equal),
-                try Diff.fromString(testing.allocator, "lso", .insert),
-                try Diff.fromString(testing.allocator, " fruit.", .equal),
+            .{
+                .text1 = "Apples are a fruit.",
+                .text2 = "Bananas are also fruit.",
+                .expected = &.{
+                    try Diff.fromString(testing.allocator, "Apple", .delete),
+                    try Diff.fromString(testing.allocator, "Banana", .insert),
+                    try Diff.fromString(testing.allocator, "s are a", .equal),
+                    try Diff.fromString(testing.allocator, "lso", .insert),
+                    try Diff.fromString(testing.allocator, " fruit.", .equal),
+                },
             },
-        },
-        .{
-            .text1 = "ax\t",
-            .text2 = "\u{0680}x\u{0000}",
-            .expected = &.{
-                try Diff.fromString(testing.allocator, "a", .delete),
-                try Diff.fromString(testing.allocator, "\u{0680}", .insert),
-                try Diff.fromString(testing.allocator, "x", .equal),
-                try Diff.fromString(testing.allocator, "\t", .delete),
-                try Diff.fromString(testing.allocator, "\u{0000}", .insert),
+            .{
+                .text1 = "ax\t",
+                .text2 = "\u{0680}x\u{0000}",
+                .expected = &.{
+                    try Diff.fromString(testing.allocator, "a", .delete),
+                    try Diff.fromString(testing.allocator, "\u{0680}", .insert),
+                    try Diff.fromString(testing.allocator, "x", .equal),
+                    try Diff.fromString(testing.allocator, "\t", .delete),
+                    try Diff.fromString(testing.allocator, "\u{0000}", .insert),
+                },
             },
-        },
-        .{
-            .text1 = "1ayb2",
-            .text2 = "abxab",
-            .expected = &.{
-                try Diff.fromString(testing.allocator, "1", .delete),
-                try Diff.fromString(testing.allocator, "a", .equal),
-                try Diff.fromString(testing.allocator, "y", .delete),
-                try Diff.fromString(testing.allocator, "b", .equal),
-                try Diff.fromString(testing.allocator, "2", .delete),
-                try Diff.fromString(testing.allocator, "xab", .insert),
+            .{
+                .text1 = "1ayb2",
+                .text2 = "abxab",
+                .expected = &.{
+                    try Diff.fromString(testing.allocator, "1", .delete),
+                    try Diff.fromString(testing.allocator, "a", .equal),
+                    try Diff.fromString(testing.allocator, "y", .delete),
+                    try Diff.fromString(testing.allocator, "b", .equal),
+                    try Diff.fromString(testing.allocator, "2", .delete),
+                    try Diff.fromString(testing.allocator, "xab", .insert),
+                },
             },
-        },
-        .{
-            .text1 = "abcy",
-            .text2 = "xaxcxabc",
-            .expected = &.{
-                try Diff.fromString(testing.allocator, "xaxcx", .insert),
-                try Diff.fromString(testing.allocator, "abc", .equal),
-                try Diff.fromString(testing.allocator, "y", .delete),
+            .{
+                .text1 = "abcy",
+                .text2 = "xaxcxabc",
+                .expected = &.{
+                    try Diff.fromString(testing.allocator, "xaxcx", .insert),
+                    try Diff.fromString(testing.allocator, "abc", .equal),
+                    try Diff.fromString(testing.allocator, "y", .delete),
+                },
             },
-        },
-        .{
-            .text1 = "ABCDa=bcd=efghijklmnopqrsEFGHIJKLMNOefg",
-            .text2 = "a-bcd-efghijklmnopqrs",
-            .expected = &.{
-                try Diff.fromString(testing.allocator, "ABCD", .delete),
-                try Diff.fromString(testing.allocator, "a", .equal),
-                try Diff.fromString(testing.allocator, "=", .delete),
-                try Diff.fromString(testing.allocator, "-", .insert),
-                try Diff.fromString(testing.allocator, "bcd", .equal),
-                try Diff.fromString(testing.allocator, "=", .delete),
-                try Diff.fromString(testing.allocator, "-", .insert),
-                try Diff.fromString(testing.allocator, "efghijklmnopqrs", .equal),
-                try Diff.fromString(testing.allocator, "EFGHIJKLMNOefg", .delete),
+            .{
+                .text1 = "ABCDa=bcd=efghijklmnopqrsEFGHIJKLMNOefg",
+                .text2 = "a-bcd-efghijklmnopqrs",
+                .expected = &.{
+                    try Diff.fromString(testing.allocator, "ABCD", .delete),
+                    try Diff.fromString(testing.allocator, "a", .equal),
+                    try Diff.fromString(testing.allocator, "=", .delete),
+                    try Diff.fromString(testing.allocator, "-", .insert),
+                    try Diff.fromString(testing.allocator, "bcd", .equal),
+                    try Diff.fromString(testing.allocator, "=", .delete),
+                    try Diff.fromString(testing.allocator, "-", .insert),
+                    try Diff.fromString(testing.allocator, "efghijklmnopqrs", .equal),
+                    try Diff.fromString(testing.allocator, "EFGHIJKLMNOefg", .delete),
+                },
             },
-        },
-        .{
-            .text1 = "a [[Pennsylvania]] and [[New",
-            .text2 = " and [[Pennsylvania]]",
-            .expected = &.{
-                try Diff.fromString(testing.allocator, " ", .insert),
-                try Diff.fromString(testing.allocator, "a", .equal),
-                try Diff.fromString(testing.allocator, "nd", .insert),
-                try Diff.fromString(testing.allocator, " [[Pennsylvania]]", .equal),
-                try Diff.fromString(testing.allocator, " and [[New", .delete),
+            .{
+                .text1 = "a [[Pennsylvania]] and [[New",
+                .text2 = " and [[Pennsylvania]]",
+                .expected = &.{
+                    try Diff.fromString(testing.allocator, " ", .insert),
+                    try Diff.fromString(testing.allocator, "a", .equal),
+                    try Diff.fromString(testing.allocator, "nd", .insert),
+                    try Diff.fromString(testing.allocator, " [[Pennsylvania]]", .equal),
+                    try Diff.fromString(testing.allocator, " and [[New", .delete),
+                },
             },
-        },
-    }) |test_case| {
-        defer if (test_case.expected) |diffs| for (diffs) |*diff| diff.deinit(testing.allocator);
+        };
 
-        const actual = try dmp.diffMainStringStringBool(test_case.text1, test_case.text2, false);
-        defer testing.allocator.free(actual);
-        defer for (actual) |*diff| diff.deinit(testing.allocator);
+        for (test_cases) |test_case| {
+            defer for (test_case.expected) |*diff| @constCast(diff).deinit(testing.allocator);
 
-        try testing.expectEqualDeep(test_case.expected, actual);
+            const actual = try dmp.diffMainStringStringBool(test_case.text1, test_case.text2, false);
+            defer testing.allocator.free(actual);
+            defer for (actual) |*diff| diff.deinit(testing.allocator);
+
+            try testing.expectEqualDeep(test_case.expected, actual);
+        }
     }
 
     {
-        const diffs: []Diff = &.{
+        const diffs: []const Diff = &.{
             try Diff.fromString(testing.allocator, "��", .equal),
         };
-        defer for (diffs) |*diff| diff.deinit();
+        defer for (diffs) |*diff| @constCast(diff).deinit(testing.allocator);
 
         const actual = try dmp.diffMainStringStringBool("\xe0\xe5", "", false);
         defer testing.allocator.free(actual);
@@ -1396,7 +1423,7 @@ test "diff main with timeout" {
     const diffs = try dmp.diffMainStringStringBool(a, b, true);
     for (diffs) |*diff| diff.deinit(testing.allocator);
     testing.allocator.free(diffs);
-    const delta = timer.read();
+    const delta: f64 = @floatFromInt(timer.read());
 
     try testing.expect(delta >= dmp.diff_timeout * std.time.ns_per_s);
 
@@ -1417,20 +1444,22 @@ test "diff main linemode" {
     dmp.diff_timeout = 0;
 
     // Test cases must be at least 100 chars long to pass the cutoff.
-    for ([_]TestCase{
+    const test_cases = [_]TestCase{
         .{
-            .text1 = "1234567890\n1234567890\n1234567890\n1234567890\n1234567890\n1234567890\n1234567890\n1234567890\n1234567890\n1234567890\n1234567890\n1234567890\n1234567890\n",
-            .text2 = "abcdefghij\nabcdefghij\nabcdefghij\nabcdefghij\nabcdefghij\nabcdefghij\nabcdefghij\nabcdefghij\nabcdefghij\nabcdefghij\nabcdefghij\nabcdefghij\nabcdefghij\n",
+            .text1 = "1234567890\n" ** 13,
+            .text2 = "abcdefghij\n" ** 13,
         },
         .{
-            .text1 = "1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890",
-            .text2 = "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
+            .text1 = "1234567890" ** 13,
+            .text2 = "abcdefghij" ** 13,
         },
         .{
-            .text1 = "1234567890\n1234567890\n1234567890\n1234567890\n1234567890\n1234567890\n1234567890\n1234567890\n1234567890\n1234567890\n1234567890\n1234567890\n1234567890\n",
+            .text1 = "1234567890\n" ** 13,
             .text2 = "abcdefghij\n1234567890\n1234567890\n1234567890\nabcdefghij\n1234567890\n1234567890\n1234567890\nabcdefghij\n1234567890\n1234567890\n1234567890\nabcdefghij\n",
         },
-    }) |test_case| {
+    };
+
+    for (test_cases) |test_case| {
         const diffs_linemode = try dmp.diffMainStringStringBool(test_case.text1, test_case.text2, true);
         defer testing.allocator.free(diffs_linemode);
         defer for (diffs_linemode) |*diff| diff.deinit(testing.allocator);
@@ -1488,14 +1517,14 @@ test "partial line index" {
     defer testing.allocator.free(diffs);
     defer for (diffs) |*diff| diff.deinit(testing.allocator);
 
-    try DiffPrivate.diffCharsToLinesLineArray(dmp, &diffs, linearray);
+    try DiffPrivate.diffCharsToLinesLineArray(testing.allocator, &diffs, linearray);
 
-    const expect: []Diff = &.{
+    const expect: []const Diff = &.{
         try Diff.fromString(testing.allocator, "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\n", .equal),
         try Diff.fromString(testing.allocator, "line 10 text1", .delete),
         try Diff.fromString(testing.allocator, "line 10 text2", .insert),
     };
-    defer for (expect) |*diff| diff.deinit(testing.allocator);
+    defer for (expect) |*diff| @constCast(diff).deinit(testing.allocator);
 
     try testing.expectEqualDeep(expect, diffs);
 }

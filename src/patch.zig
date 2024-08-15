@@ -139,35 +139,35 @@ pub fn patchAddContext(comptime MatchMaxContainer: type, allocator: Allocator, p
 // patch make parts
 ///Compute a list of patches to turn text1 into text2.
 ///A set of diffs will be computed.
-pub fn patchMakeStringString(allocator: Allocator, diff_timeout: f32, text1: [:0]const u8, text2: [:0]const u8) !PatchList {
+pub fn patchMakeStringString(comptime MatchMaxContainer: type, allocator: Allocator, patch_margin: u16, diff_timeout: f32, text1: [:0]const u8, text2: [:0]const u8) !PatchList {
     var diffs = try diff_funcs.diffMainStringStringBool(allocator, diff_timeout, text1, text2, true);
     if (diffs.len > 2) {
         try diff_funcs.diffCleanupSemantic(allocator, &diffs);
         try diff_funcs.diffCleanupEfficiency(allocator, &diffs);
     }
 
-    return patchMakeStringDiffs(allocator, text1, diffs);
+    return patchMakeStringDiffs(MatchMaxContainer, allocator, patch_margin, text1, diffs);
 }
 
 ///Compute a list of patches to turn text1 into text2.
 ///text1 will be derived from the provided diffs.
-pub fn patchMakeDiffs(allocator: Allocator, diffs: []Diff) !PatchList {
+pub fn patchMakeDiffs(comptime MatchMaxContainer: type, allocator: Allocator, patch_margin: u16, diffs: []Diff) !PatchList {
     const text1 = try diff_funcs.diffText1(allocator, diffs);
     defer allocator.free(text1);
-    return patchMakeStringDiffs(allocator, text1, diffs);
+    return patchMakeStringDiffs(MatchMaxContainer, allocator, patch_margin, text1, diffs);
 }
 
 ///Compute a list of patches to turn text1 into text2.
 ///text2 is ignored, diffs are the delta between text1 and text2.
 ///Depricated, use patchStringDiffs
-pub fn patchMakeStringStringDiffs(allocator: Allocator, text1: [:0]const u8, text2: [:0]const u8, diffs: []Diff) !PatchList {
+pub fn patchMakeStringStringDiffs(comptime MatchMaxContainer: type, allocator: Allocator, patch_margin: u16, text1: [:0]const u8, text2: [:0]const u8, diffs: []Diff) !PatchList {
     _ = text2;
-    return patchMakeStringDiffs(allocator, text1, diffs);
+    return patchMakeStringDiffs(MatchMaxContainer, allocator, patch_margin, text1, diffs);
 }
 
 ///Compute a list of patches to turn text1 into text2.
 ///text2 is not provided, diffs are the delta between text1 and text2.
-pub fn patchMakeStringDiffs(allocator: Allocator, patch_margin: u16, text1: [:0]const u8, diffs: []Diff) Allocator.Error!PatchList {
+pub fn patchMakeStringDiffs(comptime MatchMaxContainer: type, allocator: Allocator, patch_margin: u16, text1: [:0]const u8, diffs: []Diff) Allocator.Error!PatchList {
     var patches = std.ArrayList(Patch).init(allocator);
     defer patches.deinit();
     if (diffs.len == 0) {
@@ -224,7 +224,7 @@ pub fn patchMakeStringDiffs(allocator: Allocator, patch_margin: u16, text1: [:0]
                 if (diff.text.len >= 2 * patch_margin) {
                     // Time for a new patch.
                     if (patch.diffs.items.len != 0) {
-                        try patchAddContext(allocator, &patch, prepatch_text.items);
+                        try patchAddContext(MatchMaxContainer, allocator, patch_margin, &patch, prepatch_text.items);
                         try patches.append(patch);
                         patch = try Patch.init(allocator, 0, 0, 0, 0);
                         // Unlike Unidiff, our patch lists have a rolling context.
@@ -249,7 +249,7 @@ pub fn patchMakeStringDiffs(allocator: Allocator, patch_margin: u16, text1: [:0]
     }
     // Pick up the leftover patch if not empty.
     if (patch.diffs.items.len != 0) {
-        try patchAddContext(allocator, &patch, prepatch_text.items);
+        try patchAddContext(MatchMaxContainer, allocator, patch_margin, &patch, prepatch_text.items);
         try patches.append(patch);
     }
 

@@ -137,16 +137,16 @@ fn DiffMatchPatchCustom(MatchMaxContainer: type) type {
             return patch.patchAddContext(MatchMaxContainer, self.allocator, self.patch_margin, p, text);
         }
         pub inline fn patchMakeStringString(self: Self, text1: [:0]const u8, text2: [:0]const u8) !PatchList {
-            return patch.patchMakeStringString(self.allocator, self.diff_timeout, text1, text2);
+            return patch.patchMakeStringString(MatchMaxContainer, self.allocator, self.patch_margin, self.diff_timeout, text1, text2);
         }
         pub inline fn patchMakeDiffs(self: Self, diffs: []Diff) !PatchList {
-            return patch.patchMakeDiffs(self.allocator, diffs);
+            return patch.patchMakeDiffs(MatchMaxContainer, self.allocator, self.patch_margin, diffs);
         }
         pub inline fn patchMakeStringStringDiffs(self: Self, text1: [:0]const u8, text2: [:0]const u8, diffs: []Diff) !PatchList {
-            return patch.patchMakeStringStringDiffs(self.allocator, text1, text2, diffs);
+            return patch.patchMakeStringStringDiffs(MatchMaxContainer, self.allocator, self.patch_margin, text1, text2, diffs);
         }
         pub inline fn patchMakeStringDiffs(self: Self, text1: [:0]const u8, diffs: []Diff) std.mem.Allocator.Error!PatchList {
-            return patch.patchMakeStringDiffs(self.allocator, self.patch_margin, text1, diffs);
+            return patch.patchMakeStringDiffs(MatchMaxContainer, self.allocator, self.patch_margin, text1, diffs);
         }
         pub inline fn patchDeepCopy(self: Self, patches: PatchList) std.mem.Allocator.Error!PatchList {
             return patch.patchDeepCopy(self.allocator, patches);

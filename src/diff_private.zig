@@ -144,7 +144,7 @@ fn diffComputeTimer(allocator: Allocator, diff_timeout: f32, text1: []const u8, 
 
         // Merge the results.
         try diffs.appendSlice(diffs_a);
-        try diffs.append(DMP.Diff{ .text = hm.common, .operation = .equal });
+        try diffs.append(DMP.Diff{ .text = @constCast(hm.common), .operation = .equal });
         try diffs.appendSlice(diffs_b);
 
         return diffs.toOwnedSlice();
