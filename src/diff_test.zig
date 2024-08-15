@@ -301,7 +301,6 @@ test "chars to lines" {
 }
 
 test "cleanup merge" {
-    if (true) return error.SkipZigTest;
     const TestCase = struct {
         diffs: []Diff,
         expected: []const Diff,
@@ -309,7 +308,7 @@ test "cleanup merge" {
 
     const dmp = DMP.init(testing.allocator);
 
-    for ([_]TestCase{
+    const test_cases = [_]TestCase{
         .{
             .diffs = testDiffList(&.{}),
             .expected = &.{},
@@ -456,7 +455,9 @@ test "cleanup merge" {
                 try Diff.fromString(testing.allocator, "cba", .delete),
             },
         },
-    }) |test_case| {
+    };
+
+    for (test_cases) |test_case| {
         var diffs = test_case.diffs;
         defer testing.allocator.free(diffs);
         defer for (diffs) |diff| diff.deinit(testing.allocator);

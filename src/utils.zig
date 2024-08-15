@@ -23,6 +23,22 @@ pub fn getIdxOrNull(comptime T: type, arrayList: std.ArrayList(T), idx: usize) ?
     return arrayList.items[idx];
 }
 
+///resizes a slice, returns the old size
+pub fn resize(comptime T: type, allocator: std.mem.Allocator, slice: *[]T, new_len: usize) !usize {
+    const len_start = slice.len;
+    if (allocator.resize(slice.*, new_len)) return len_start;
+
+    //failed to resize
+    const new_slice = try allocator.alloc(T, new_len);
+    @memcpy(new_slice[0..len_start], slice.*[0..@min(new_len, len_start)]);
+    @memset(slice.*, undefined);
+    if (len_start < new_len) @memset(new_slice[len_start..], undefined);
+    allocator.free(slice.*);
+    slice.* = new_slice;
+    return len_start;
+    // TODO: tests
+}
+
 ///Emulates the regex
 ///`^@@ -(\d+),?(\d*) \+(\d+),?(\d*) @@$`
 pub fn matchPatchHeader(text: []const u8) ?struct { usize, ?usize, usize, ?usize } {

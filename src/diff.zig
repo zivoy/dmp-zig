@@ -114,9 +114,177 @@ pub fn diffCleanupEfficiency(allocator: Allocator, diffs: *[]Diff) !void {
 ///Reorder and merge like edit sections.  Merge equalities.
 ///Any edit section can move as long as it doesn't cross an equality.
 pub fn diffCleanupMerge(allocator: Allocator, diffs: *[]Diff) !void {
-    _ = allocator;
-    _ = diffs;
-    @compileError("Not Implemented");
+    var diff_list = std.ArrayList(Diff).fromOwnedSlice(allocator, diffs.*);
+    defer diff_list.deinit();
+    errdefer if (diff_list.toOwnedSlice()) |diff_o| {
+        diffs.* = diff_o;
+    } else |_| {};
+
+    // Add a dummy entry at the end.
+    try diff_list.append(try Diff.fromString(allocator, "", .equal));
+    var pointer: usize = 0;
+    var count_delete: usize = 0;
+    var count_insert: usize = 0;
+    var common_length: usize = 0;
+
+    var text_insert = std.ArrayList(u8).init(allocator);
+    defer text_insert.deinit();
+    var text_delete = std.ArrayList(u8).init(allocator);
+    defer text_delete.deinit();
+
+    while (pointer < diff_list.items.len) {
+        var diff = diff_list.items[pointer];
+        switch (diff.operation) {
+            .insert => {
+                count_insert += 1;
+                try text_insert.appendSlice(diff.text);
+                pointer += 1;
+            },
+            .delete => {
+                count_delete += 1;
+                try text_delete.appendSlice(diff.text);
+                pointer += 1;
+            },
+            .equal => {
+                // Upon reaching an equality, check for prior redundancies.
+                if (count_delete + count_insert > 1) {
+                    if (count_delete != 0 and count_insert != 0) {
+                        // Factor out any common prefixies.
+                        common_length = diffCommonPrefix(text_insert.items, text_delete.items);
+                        if (common_length != 0) {
+                            const x = pointer - count_delete - count_insert;
+                            const common_text = text_insert.items[0..common_length];
+                            if (x > 0 and diff_list.items[x - 1].operation == .equal) {
+                                const old_len = try utils.resize(u8, allocator, &diff_list.items[x - 1].text, diff_list.items[x - 1].text.len + common_length);
+                                std.mem.copyForwards(u8, diff_list.items[x - 1].text[old_len .. old_len + common_length], common_text);
+                            } else {
+                                try diff_list.insert(0, try Diff.fromSlice(allocator, common_text, .equal));
+                                pointer += 1;
+                            }
+
+                            std.mem.copyForwards(u8, text_insert.items[0 .. text_insert.items.len - common_length], text_insert.items[common_length..]);
+                            text_insert.items.len -= common_length;
+                            std.mem.copyForwards(u8, text_delete.items[0 .. text_delete.items.len - common_length], text_delete.items[common_length..]);
+                            text_delete.items.len -= common_length;
+                        }
+
+                        // Factor out any common suffixies.
+                        common_length = diffCommonSuffix(text_insert.items, text_delete.items);
+                        if (common_length != 0) {
+                            const old_len = try utils.resize(u8, allocator, &diff.text, diff.text.len + common_length);
+                            std.mem.copyBackwards(u8, diff.text[common_length..], diff.text[0..old_len]);
+                            std.mem.copyForwards(u8, diff.text[0..common_length], text_insert.items[text_insert.items.len - common_length ..]);
+
+                            text_insert.items.len -= common_length;
+                            text_delete.items.len -= common_length;
+                            diff_list.items[pointer] = diff;
+                        }
+                    }
+
+                    // Delete the offending records and add the merged ones.
+                    const del_count = count_delete + count_insert;
+                    if (count_delete == 0) {
+                        const delete_loc = pointer - count_insert;
+                        for (diff_list.items[delete_loc .. delete_loc + del_count]) |*d| d.deinit(allocator);
+                        try diff_list.replaceRange(delete_loc, del_count, &.{try Diff.fromSlice(allocator, text_insert.items, .insert)});
+                    } else if (count_insert == 0) {
+                        const delete_loc = pointer - count_delete;
+                        for (diff_list.items[delete_loc .. delete_loc + del_count]) |*d| d.deinit(allocator);
+                        try diff_list.replaceRange(delete_loc, del_count, &.{try Diff.fromSlice(allocator, text_delete.items, .delete)});
+                    } else {
+                        const delete_loc = pointer - count_delete - count_insert;
+                        for (diff_list.items[delete_loc .. delete_loc + del_count]) |*d| d.deinit(allocator);
+                        try diff_list.replaceRange(delete_loc, del_count, &.{
+                            try Diff.fromSlice(allocator, text_delete.items, .delete),
+                            try Diff.fromSlice(allocator, text_insert.items, .insert),
+                        });
+                    }
+
+                    pointer = pointer - count_delete - count_insert + 1;
+                    if (count_delete != 0) {
+                        pointer += 1;
+                    }
+                    if (count_insert != 0) {
+                        pointer += 1;
+                    }
+                } else if (pointer != 0 and diff_list.items[pointer - 1].operation == .equal) {
+                    // Merge this equality with the previous one.
+                    var last_diff = diff_list.items[pointer - 1];
+                    const old_len = try utils.resize(u8, allocator, &last_diff.text, last_diff.text.len + diff.text.len);
+                    std.mem.copyForwards(u8, last_diff.text[old_len..], diff.text);
+
+                    diff_list.items[pointer - 1] = last_diff;
+
+                    diff.deinit(allocator);
+                    _ = diff_list.orderedRemove(pointer);
+                } else {
+                    pointer += 1;
+                }
+                count_insert = 0;
+                count_delete = 0;
+                text_insert.clearRetainingCapacity();
+                text_delete.clearRetainingCapacity();
+            },
+        }
+    }
+
+    if (diff_list.getLast().text.len == 0) {
+        // Remove the dummy entry at the end.
+        diff_list.items[diff_list.items.len - 1].deinit(allocator);
+        _ = diff_list.orderedRemove(diff_list.items.len - 1);
+    }
+
+    //Second pass: look for single edits surrounded on both sides by equalities
+    //which can be shifted sideways to eliminate an equality.
+    //e.g: A<ins>BA</ins>C -> <ins>AB</ins>AC
+    var changes = false;
+    pointer = 1;
+    // Intentionally ignore the first and last element (don't need checking).
+    while (diff_list.items.len > 2 and pointer < diff_list.items.len - 1) {
+        var diff = diff_list.items[pointer];
+        var last_diff = diff_list.items[pointer - 1];
+        var next_diff = diff_list.items[pointer + 1];
+        if (last_diff.operation == .equal and next_diff.operation == .equal) {
+            // This is a single edit surrounded by equalities.
+            if (std.mem.endsWith(u8, diff.text, last_diff.text)) {
+                // Shift the edit over the previous equality.
+                std.mem.copyBackwards(u8, diff.text[last_diff.text.len..diff.text.len], diff.text[0 .. diff.text.len - last_diff.text.len]);
+                std.mem.copyForwards(u8, diff.text[0..last_diff.text.len], last_diff.text);
+
+                const old_len = try utils.resize(u8, allocator, &next_diff.text, last_diff.text.len + next_diff.text.len);
+                std.mem.copyBackwards(u8, next_diff.text[last_diff.text.len..], next_diff.text[0..old_len]);
+                std.mem.copyForwards(u8, next_diff.text[0..last_diff.text.len], last_diff.text);
+
+                diff_list.items[pointer + 1] = next_diff;
+
+                last_diff.deinit(allocator);
+                _ = diff_list.orderedRemove(pointer - 1);
+                changes = true;
+            } else if (std.mem.startsWith(u8, diff.text, next_diff.text)) {
+                // Shift the edit over the next equality.
+                // diffs[pointer-1].Text += next_diff.text
+                const old_len = try utils.resize(u8, allocator, &last_diff.text, last_diff.text.len + next_diff.text.len);
+                std.mem.copyForwards(u8, last_diff.text[old_len..], next_diff.text);
+
+                std.mem.copyForwards(u8, diff.text[0 .. diff.text.len - next_diff.text.len], diff.text[next_diff.text.len..]);
+                std.mem.copyForwards(u8, diff.text[diff.text.len - next_diff.text.len ..], next_diff.text);
+
+                diff_list.items[pointer - 1] = last_diff;
+
+                next_diff.deinit(allocator);
+                _ = diff_list.orderedRemove(pointer + 1);
+                changes = true;
+            }
+        }
+        pointer += 1;
+    }
+
+    diffs.* = try diff_list.toOwnedSlice();
+
+    // If shifts were made, the diff needs reordering and another shift sweep.
+    if (changes) {
+        try diffCleanupMerge(allocator, diffs);
+    }
 }
 
 ///loc is a location in text1, compute and return the equivalent location in text2.
