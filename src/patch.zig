@@ -90,7 +90,7 @@ pub const Patch = struct {
     }
 
     pub fn deinit(self: Patch, allocator: std.mem.Allocator) void {
-        for (self.diffs.items) |diff| {
+        for (self.diffs.items) |*diff| {
             diff.deinit(allocator);
         }
         self.diffs.deinit(allocator);

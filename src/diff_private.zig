@@ -46,7 +46,7 @@ pub fn diffMainStringStringBoolTimeout(allocator: Allocator, diff_timeout: f32, 
 fn diffMainStringStringBoolTimeoutTimer(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, check_lines: bool, ns_time_limit: u64, timer: *std.time.Timer) ![]DMP.Diff {
     var diffs = std.ArrayList(DMP.Diff).init(allocator);
     defer diffs.deinit();
-    errdefer for (diffs.items) |diff| diff.deinit(allocator);
+    errdefer for (diffs.items) |*diff| diff.deinit(allocator);
 
     // Check for equality (speedup).
     if (std.mem.eql(u8, text1, text2)) {
@@ -98,7 +98,7 @@ pub fn diffCompute(allocator: Allocator, diff_timeout: f32, text1: []const u8, t
 fn diffComputeTimer(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, checklines: bool, ns_time_limit: u64, timer: *std.time.Timer) Allocator.Error![]DMP.Diff {
     var diffs = std.ArrayList(DMP.Diff).init(allocator);
     defer diffs.deinit();
-    errdefer for (diffs.items) |diff| diff.deinit(allocator);
+    errdefer for (diffs.items) |*diff| diff.deinit(allocator);
 
     if (text1.len == 0) {
         // Just add some text (speedup).

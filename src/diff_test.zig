@@ -21,7 +21,7 @@ fn diffRebuildTexts(diffs: []Diff) !struct { []const u8, []const u8 } {
     var text2 = std.ArrayList(u8).init(testing.allocator);
     defer text2.deinit();
 
-    for (diffs) |diff| {
+    for (diffs) |*diff| {
         if (diff.operation != .insert) {
             try text1.appendSlice(diff.text);
         }
@@ -175,8 +175,8 @@ test "bisect split" {
     const text2 = "WĺĻļ\x05YZ\x05ĽľĿŀZ";
 
     const diffs = try DiffPrivate.diffBisectSplit(testing.allocator, dmp.diff_timeout, text1, text2, 7, 6, std.time.ns_per_hour);
-    defer for (diffs) |diff| diff.deinit(testing.allocator);
-    for (diffs) |diff| {
+    defer for (diffs) |*diff| diff.deinit(testing.allocator);
+    for (diffs) |*diff| {
         try testing.expect(std.unicode.utf8ValidateSlice(diff.text));
     }
     // TODO: actual expected outcome
@@ -288,8 +288,8 @@ test "chars to lines" {
     for (test_cases) |test_case| {
         var diffs = @constCast(test_case.diffs);
         defer @constCast(&test_case.lines).deinit();
-        defer for (diffs) |diff| diff.deinit(testing.allocator);
-        defer for (test_case.expected) |diff| diff.deinit(testing.allocator);
+        defer for (diffs) |*diff| diff.deinit(testing.allocator);
+        defer for (test_case.expected) |*diff| @constCast(diff).deinit(testing.allocator);
         try DiffPrivate.diffCharsToLinesLineArray(testing.allocator, &diffs, test_case.lines);
 
         try testing.expectEqual(diffs.len, test_case.expected.len);
@@ -460,8 +460,8 @@ test "cleanup merge" {
     for (test_cases) |test_case| {
         var diffs = test_case.diffs;
         defer testing.allocator.free(diffs);
-        defer for (diffs) |diff| diff.deinit(testing.allocator);
-        defer for (test_case.expected) |diff| diff.deinit(testing.allocator);
+        defer for (diffs) |*diff| diff.deinit(testing.allocator);
+        defer for (test_case.expected) |*diff| @constCast(diff).deinit(testing.allocator);
 
         try dmp.diffCleanupMerge(&diffs);
         try testing.expectEqualDeep(test_case.expected, diffs);
@@ -591,8 +591,8 @@ test "cleanup semantic lossless" {
     }) |test_case| {
         var diffs = test_case.diffs;
         defer testing.allocator.free(diffs);
-        defer for (diffs) |diff| diff.deinit(testing.allocator);
-        defer for (test_case.expected) |diff| diff.deinit(testing.allocator);
+        defer for (diffs) |*diff| diff.deinit(testing.allocator);
+        defer for (test_case.expected) |*diff| diff.deinit(testing.allocator);
 
         dmp.diffCleanupSemanticLossless(&diffs);
         try testing.expectEqualDeep(test_case.expected, diffs);
@@ -835,8 +835,8 @@ test "cleanup semantic" {
     }) |test_case| {
         var diffs = test_case.diffs;
         defer testing.allocator.free(diffs);
-        defer for (diffs) |diff| diff.deinit(testing.allocator);
-        defer for (test_case.expected) |diff| diff.deinit(testing.allocator);
+        defer for (diffs) |*diff| diff.deinit(testing.allocator);
+        defer for (test_case.expected) |*diff| diff.deinit(testing.allocator);
 
         dmp.diffCleanupSemantic(&diffs);
         try testing.expectEqualDeep(test_case.expected, diffs);
@@ -918,8 +918,8 @@ test "cleanup efficiency" {
     }) |test_case| {
         var diffs = test_case.diffs;
         defer testing.allocator.free(diffs);
-        defer for (diffs) |diff| diff.deinit(testing.allocator);
-        defer for (test_case.expected) |diff| diff.deinit(testing.allocator);
+        defer for (diffs) |*diff| diff.deinit(testing.allocator);
+        defer for (test_case.expected) |*diff| diff.deinit(testing.allocator);
 
         dmp.diffCleanupEfficiency(&diffs);
         try testing.expectEqualDeep(test_case.expected, diffs);
@@ -944,8 +944,8 @@ test "cleanup efficiency" {
     }) |test_case| {
         var diffs = test_case.diffs;
         defer testing.allocator.free(diffs);
-        defer for (diffs) |diff| diff.deinit(testing.allocator);
-        defer for (test_case.expected) |diff| diff.deinit(testing.allocator);
+        defer for (diffs) |*diff| diff.deinit(testing.allocator);
+        defer for (test_case.expected) |*diff| diff.deinit(testing.allocator);
 
         dmp.diffCleanupEfficiency(&diffs);
         try testing.expectEqualDeep(test_case.expected, diffs);
@@ -962,7 +962,7 @@ test "pretty html" {
     });
     const expected_text: []const u8 = "<span>a&para;<br></span><del style=\"background:#ffe6e6;\">&lt;B&gt;b&lt;/B&gt;</del><ins style=\"background:#e6ffe6;\">c&amp;d</ins>";
 
-    defer for (diffs) |diff| diff.deinit(testing.allocator);
+    defer for (diffs) |*diff| diff.deinit(testing.allocator);
 
     const actual_text = try dmp.diffPrettyHtml(diffs);
     defer testing.allocator.free(actual_text);
@@ -979,7 +979,7 @@ test "pretty text" {
     });
     const expected_text: []const u8 = "a\n\x1b[31m<B>b</B>\x1b[0m\x1b[32mc&d\x1b[0m";
 
-    defer for (diffs) |diff| diff.deinit(testing.allocator);
+    defer for (diffs) |*diff| diff.deinit(testing.allocator);
 
     const actual_text = try dmp.diffPrettyText(diffs);
     defer testing.allocator.free(actual_text);
@@ -1001,7 +1001,7 @@ test "diff text" {
     const expected_text1: []const u8 = "jumps over the lazy";
     const expected_text2: []const u8 = "jumped over a lazy";
 
-    defer for (diffs) |diff| diff.deinit(testing.allocator);
+    defer for (diffs) |*diff| diff.deinit(testing.allocator);
 
     const actual_text1 = try dmp.diffText1(diffs);
     defer testing.allocator.free(actual_text1);
@@ -1033,7 +1033,7 @@ test "to from delta" {
         try Diff.fromString(testing.allocator, " lazy", .equal),
         try Diff.fromString(testing.allocator, "old dog", .insert),
     };
-    // errdefer for (diffs1) |diff| diff.deinit(testing.allocator);
+    // errdefer for (diffs1) |*diff| diff.deinit(testing.allocator);
 
     const text1 = try dmp.diffText1(@constCast(diffs1));
     defer testing.allocator.free(text1);
@@ -1048,7 +1048,7 @@ test "to from delta" {
         try Diff.fromString(testing.allocator, "\u{0681} \x01 \n ^", .delete),
         try Diff.fromString(testing.allocator, "\u{0682} \x02 \\ |", .insert),
     };
-    // errdefer for (diffs2) |diff| diff.deinit(testing.allocator);
+    // errdefer for (diffs2) |*diff| diff.deinit(testing.allocator);
 
     const text2 = try dmp.diffText1(@constCast(diffs2));
     defer testing.allocator.free(text2);
@@ -1061,7 +1061,7 @@ test "to from delta" {
     const diffs3: []const Diff = &.{
         try Diff.fromString(testing.allocator, "ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz 0123456789 - _ . ! ~ * ' ( ) ; / ? : @ & = + $ , # ", .insert),
     };
-    // errdefer for (diffs3) |diff| diff.deinit(testing.allocator);
+    // errdefer for (diffs3) |*diff| diff.deinit(testing.allocator);
 
     const delta3 = try dmp.diffToDelta(@constCast(diffs3));
     defer testing.allocator.free(delta3);
@@ -1080,10 +1080,10 @@ test "to from delta" {
         .{ .text = text2, .delta = delta2, .expected_error = null, .expected_diffs = diffs2 },
         .{ .text = "", .delta = delta3, .expected_error = null, .expected_diffs = diffs3 },
     }) |test_case| {
-        defer if (test_case.expected_diffs) |diffs| for (diffs) |diff| diff.deinit(testing.allocator);
+        defer if (test_case.expected_diffs) |diffs| for (diffs) |*diff| @constCast(diff).deinit(testing.allocator);
         if (dmp.diffFromDelta(test_case.text, test_case.delta)) |diffs| {
             defer testing.allocator.free(diffs);
-            defer for (diffs) |diff| diff.deinit(testing.allocator);
+            defer for (diffs) |*diff| diff.deinit(testing.allocator);
 
             try testing.expect(test_case.expected_diffs != null);
             try testing.expect(test_case.expected_error == null);
@@ -1128,7 +1128,7 @@ test "x index" {
         },
     }) |test_case| {
         const diffs = @constCast(test_case.diffs);
-        defer for (diffs) |diff| diff.deinit(testing.allocator);
+        defer for (diffs) |*diff| diff.deinit(testing.allocator);
         const actual = dmp.diffXIndex(diffs, test_case.location);
         try testing.expectEqual(test_case.expected, actual);
     }
@@ -1144,7 +1144,7 @@ test "levenstein" {
             try Diff.fromString(testing.allocator, "1234", .insert),
             try Diff.fromString(testing.allocator, "xyz", .equal),
         })[0..];
-        defer for (diffs) |diff| diff.deinit(testing.allocator);
+        defer for (diffs) |*diff| diff.deinit(testing.allocator);
         try testing.expectEqual(4, dmp.diffLevenshtein(diffs));
     }
     {
@@ -1153,7 +1153,7 @@ test "levenstein" {
             try Diff.fromString(testing.allocator, "abc", .delete),
             try Diff.fromString(testing.allocator, "1234", .insert),
         })[0..];
-        defer for (diffs) |diff| diff.deinit(testing.allocator);
+        defer for (diffs) |*diff| diff.deinit(testing.allocator);
         try testing.expectEqual(4, dmp.diffLevenshtein(diffs));
     }
     {
@@ -1162,7 +1162,7 @@ test "levenstein" {
             try Diff.fromString(testing.allocator, "xyz", .equal),
             try Diff.fromString(testing.allocator, "1234", .insert),
         });
-        defer for (diffs) |diff| diff.deinit(testing.allocator);
+        defer for (diffs) |*diff| diff.deinit(testing.allocator);
         try testing.expectEqual(7, dmp.diffLevenshtein(diffs));
     }
 }
@@ -1189,11 +1189,11 @@ test "bisect" {
         try Diff.fromString(testing.allocator, "cat", .delete),
         try Diff.fromString(testing.allocator, "map", .insert),
     } } }) |test_case| {
-        defer for (test_case.expected) |diff| diff.deinit();
+        defer for (test_case.expected) |*diff| diff.deinit();
 
         const actual = try DiffPrivate.diffBisect(testing.allocator, text1, text2, test_case.deadline);
         defer testing.allocator.free(actual);
-        defer for (actual) |diff| diff.deinit();
+        defer for (actual) |*diff| diff.deinit();
 
         try testing.expectEqualDeep(test_case.expected, actual);
     }
@@ -1202,11 +1202,11 @@ test "bisect" {
         const diffs: []Diff = &.{
             try Diff.fromString(testing.allocator, "��", .equal),
         };
-        defer for (diffs) |diff| diff.deinit();
+        defer for (diffs) |*diff| diff.deinit();
 
         const actual = try DiffPrivate.diffBisect(dmp, "\xe0\xe5", "\xe0\xe5", std.time.ns_per_min);
         defer testing.allocator.free(actual);
-        defer for (actual) |diff| diff.deinit();
+        defer for (actual) |*diff| diff.deinit();
 
         try testing.expectEqualDeep(diffs, actual);
     }
@@ -1268,11 +1268,11 @@ test "diff main" {
             try Diff.fromString(testing.allocator, "c", .equal),
         },
     } }) |test_case| {
-        defer if (test_case.expected) |diffs| for (diffs) |diff| diff.deinit(testing.allocator);
+        defer if (test_case.expected) |diffs| for (diffs) |*diff| diff.deinit(testing.allocator);
 
         const actual = try dmp.diffMainStringStringBool(test_case.text1, test_case.text2, false);
         defer testing.allocator.free(actual);
-        defer for (actual) |diff| diff.deinit(testing.allocator);
+        defer for (actual) |*diff| diff.deinit(testing.allocator);
 
         try testing.expectEqualDeep(test_case.expected, actual);
     }
@@ -1359,11 +1359,11 @@ test "diff main" {
             },
         },
     }) |test_case| {
-        defer if (test_case.expected) |diffs| for (diffs) |diff| diff.deinit(testing.allocator);
+        defer if (test_case.expected) |diffs| for (diffs) |*diff| diff.deinit(testing.allocator);
 
         const actual = try dmp.diffMainStringStringBool(test_case.text1, test_case.text2, false);
         defer testing.allocator.free(actual);
-        defer for (actual) |diff| diff.deinit(testing.allocator);
+        defer for (actual) |*diff| diff.deinit(testing.allocator);
 
         try testing.expectEqualDeep(test_case.expected, actual);
     }
@@ -1372,11 +1372,11 @@ test "diff main" {
         const diffs: []Diff = &.{
             try Diff.fromString(testing.allocator, "��", .equal),
         };
-        defer for (diffs) |diff| diff.deinit();
+        defer for (diffs) |*diff| diff.deinit();
 
         const actual = try dmp.diffMainStringStringBool("\xe0\xe5", "", false);
         defer testing.allocator.free(actual);
-        defer for (actual) |diff| diff.deinit(testing.allocator);
+        defer for (actual) |*diff| diff.deinit(testing.allocator);
 
         try testing.expectEqualDeep(diffs, actual);
     }
@@ -1394,7 +1394,7 @@ test "diff main with timeout" {
 
     var timer = try std.time.Timer.start();
     const diffs = try dmp.diffMainStringStringBool(a, b, true);
-    for (diffs) |diff| diff.deinit(testing.allocator);
+    for (diffs) |*diff| diff.deinit(testing.allocator);
     testing.allocator.free(diffs);
     const delta = timer.read();
 
@@ -1433,10 +1433,10 @@ test "diff main linemode" {
     }) |test_case| {
         const diffs_linemode = try dmp.diffMainStringStringBool(test_case.text1, test_case.text2, true);
         defer testing.allocator.free(diffs_linemode);
-        defer for (diffs_linemode) |diff| diff.deinit(testing.allocator);
+        defer for (diffs_linemode) |*diff| diff.deinit(testing.allocator);
         const diffs_textmode = try dmp.diffMainStringStringBool(test_case.text1, test_case.text2, false);
         defer testing.allocator.free(diffs_textmode);
-        defer for (diffs_textmode) |diff| diff.deinit(testing.allocator);
+        defer for (diffs_textmode) |*diff| diff.deinit(testing.allocator);
 
         const linemode_text1, const linemode_text2 = try diffRebuildTexts(diffs_linemode);
         defer testing.allocator.free(linemode_text1);
@@ -1486,7 +1486,7 @@ test "partial line index" {
 
     var diffs = try dmp.diffMainStringStringBool(text1, text2, false);
     defer testing.allocator.free(diffs);
-    defer for (diffs) |diff| diff.deinit(testing.allocator);
+    defer for (diffs) |*diff| diff.deinit(testing.allocator);
 
     try DiffPrivate.diffCharsToLinesLineArray(dmp, &diffs, linearray);
 
@@ -1495,7 +1495,7 @@ test "partial line index" {
         try Diff.fromString(testing.allocator, "line 10 text1", .delete),
         try Diff.fromString(testing.allocator, "line 10 text2", .insert),
     };
-    defer for (expect) |diff| diff.deinit(testing.allocator);
+    defer for (expect) |*diff| diff.deinit(testing.allocator);
 
     try testing.expectEqualDeep(expect, diffs);
 }

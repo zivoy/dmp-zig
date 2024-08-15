@@ -42,8 +42,9 @@ pub const Diff = struct {
         return Diff.fromSlice(allocator, self.text, self.operation);
     }
 
-    pub fn deinit(self: Diff, allocator: std.mem.Allocator) void {
+    pub fn deinit(self: *Diff, allocator: std.mem.Allocator) void {
         allocator.free(self.text);
+        self.* = undefined;
     }
 };
 
@@ -469,7 +470,7 @@ pub fn diffToDeltaWriter(writer: anytype, diffs: []Diff) @TypeOf(writer).Error!v
 pub fn diffFromDelta(allocator: Allocator, text1: []const u8, delta: []const u8) (DiffError || std.fmt.ParseIntError || Allocator.Error)![]Diff {
     var diffs = std.ArrayList(Diff).init(allocator);
     defer diffs.deinit();
-    errdefer for (diffs.items) |diff| diff.deinit(allocator);
+    errdefer for (diffs.items) |*diff| diff.deinit(allocator);
 
     var pointer: usize = 0;
     var tokens = std.mem.splitScalar(u8, delta, '\t');

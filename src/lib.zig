@@ -68,7 +68,7 @@ pub const Patch = extern struct {
 export fn diffXIndex(diffs: [*c]const Diff, diffs_len: c_int, loc: c_int) callconv(.C) c_int {
     var i_diffs = dmpDiffListFromExtern(diffs[0..@intCast(diffs_len)]) catch @panic("OOM");
     defer i_diffs.deinit(allocator);
-    defer for (i_diffs.items) |d| d.deinit(allocator);
+    defer for (i_diffs.items) |*d| d.deinit(allocator);
 
     const location = diff.diffXIndex(i_diffs.items, @intCast(loc));
     return @intCast(location);
@@ -77,7 +77,7 @@ export fn diffXIndex(diffs: [*c]const Diff, diffs_len: c_int, loc: c_int) callco
 export fn diffPrettyHtml(diffs: [*c]const Diff, diffs_len: c_int) callconv(.C) [*c]const u8 {
     var i_diffs = dmpDiffListFromExtern(diffs[0..@intCast(diffs_len)]) catch @panic("OOM");
     defer i_diffs.deinit(allocator);
-    defer for (i_diffs.items) |d| d.deinit(allocator);
+    defer for (i_diffs.items) |*d| d.deinit(allocator);
 
     const text = diff.diffPrettyHtml(allocator, i_diffs.items) catch @panic("OOM");
     return text.ptr;
@@ -86,7 +86,7 @@ export fn diffPrettyHtml(diffs: [*c]const Diff, diffs_len: c_int) callconv(.C) [
 export fn diffPrettyText(diffs: [*c]const Diff, diffs_len: c_int) callconv(.C) [*c]const u8 {
     var i_diffs = dmpDiffListFromExtern(diffs[0..@intCast(diffs_len)]) catch @panic("OOM");
     defer i_diffs.deinit(allocator);
-    defer for (i_diffs.items) |d| d.deinit(allocator);
+    defer for (i_diffs.items) |*d| d.deinit(allocator);
 
     const text = diff.diffPrettyText(allocator, i_diffs.items) catch @panic("OOM");
     return text.ptr;
@@ -95,7 +95,7 @@ export fn diffPrettyText(diffs: [*c]const Diff, diffs_len: c_int) callconv(.C) [
 export fn diffText1(diffs: [*c]const Diff, diffs_len: c_int) callconv(.C) [*c]const u8 {
     var i_diffs = dmpDiffListFromExtern(diffs[0..@intCast(diffs_len)]) catch @panic("OOM");
     defer i_diffs.deinit(allocator);
-    defer for (i_diffs.items) |d| d.deinit(allocator);
+    defer for (i_diffs.items) |*d| d.deinit(allocator);
 
     const text1 = diff.diffText1(allocator, i_diffs.items) catch @panic("OOM");
     return text1.ptr;
@@ -104,7 +104,7 @@ export fn diffText1(diffs: [*c]const Diff, diffs_len: c_int) callconv(.C) [*c]co
 export fn diffText2(diffs: [*c]const Diff, diffs_len: c_int) callconv(.C) [*c]const u8 {
     var i_diffs = dmpDiffListFromExtern(diffs[0..@intCast(diffs_len)]) catch @panic("OOM");
     defer i_diffs.deinit(allocator);
-    defer for (i_diffs.items) |d| d.deinit(allocator);
+    defer for (i_diffs.items) |*d| d.deinit(allocator);
 
     const text2 = diff.diffText2(allocator, i_diffs.items) catch @panic("OOM");
     return text2.ptr;
@@ -113,7 +113,7 @@ export fn diffText2(diffs: [*c]const Diff, diffs_len: c_int) callconv(.C) [*c]co
 export fn diffLevenshtein(diffs: [*c]const Diff, diffs_len: c_int) callconv(.C) c_int {
     var i_diffs = dmpDiffListFromExtern(diffs[0..@intCast(diffs_len)]) catch @panic("OOM");
     defer i_diffs.deinit(allocator);
-    defer for (i_diffs.items) |d| d.deinit(allocator);
+    defer for (i_diffs.items) |*d| d.deinit(allocator);
 
     const distance = diff.diffLevenshtein(i_diffs.items);
     return @intCast(distance);
@@ -122,7 +122,7 @@ export fn diffLevenshtein(diffs: [*c]const Diff, diffs_len: c_int) callconv(.C) 
 export fn diffToDelta(diffs: [*c]const Diff, diffs_len: c_int) callconv(.C) [*c]const u8 {
     var i_diffs = dmpDiffListFromExtern(diffs[0..@intCast(diffs_len)]) catch @panic("OOM");
     defer i_diffs.deinit(allocator);
-    defer for (i_diffs.items) |d| d.deinit(allocator);
+    defer for (i_diffs.items) |*d| d.deinit(allocator);
 
     const delta = diff.diffToDelta(allocator, i_diffs.items) catch @panic("OOM");
     return delta.ptr;
