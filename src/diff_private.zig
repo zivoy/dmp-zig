@@ -1,7 +1,9 @@
 const std = @import("std");
 const utils = @import("utils.zig");
-const DMP = @import("diffmatchpatch.zig");
 const diff_funcs = @import("diff.zig");
+
+const Diff = @import("diff.zig").Diff;
+const DiffOperation = @import("diff.zig").DiffOperation;
 
 const Allocator = std.mem.Allocator;
 
@@ -28,7 +30,7 @@ pub const LineArray = struct {
         for (self.array_list.items) |item| self.allocator.free(item);
         self.array_list.deinit(self.allocator);
         self.allocator.destroy(self.array_list);
-        self.items = undefined;
+        self.* = undefined;
     }
     pub fn append(self: S, text: []const u8) Allocator.Error!void {
         const text_copy = try self.allocator.alloc(u8, text.len);
@@ -39,48 +41,58 @@ pub const LineArray = struct {
 
 ///Find the differences between two texts.  Simplifies the problem by
 ///stripping any common prefix or suffix off the texts before diffing.
-pub fn diffMainStringStringBoolTimeout(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, check_lines: bool, ns_time_limit: u64) ![]DMP.Diff {
-    var timer = try std.time.Timer.start();
+pub fn diffMainStringStringBoolTimeout(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, check_lines: bool, ns_time_limit: u64) ![]Diff {
+    var timer = std.time.Timer.start() catch @panic("Timer not available");
     return diffMainStringStringBoolTimeoutTimer(allocator, diff_timeout, text1, text2, check_lines, ns_time_limit, &timer);
 }
-fn diffMainStringStringBoolTimeoutTimer(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, check_lines: bool, ns_time_limit: u64, timer: *std.time.Timer) ![]DMP.Diff {
-    var diffs = std.ArrayList(DMP.Diff).init(allocator);
+fn diffMainStringStringBoolTimeoutTimer(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, check_lines: bool, ns_time_limit: u64, timer: *std.time.Timer) Allocator.Error![]Diff {
+    var diffs = std.ArrayList(Diff).init(allocator);
     defer diffs.deinit();
     errdefer for (diffs.items) |*diff| diff.deinit(allocator);
 
     // Check for equality (speedup).
     if (std.mem.eql(u8, text1, text2)) {
         if (text1.len != 0) {
-            try diffs.append(try DMP.Diff.fromSlice(allocator, text1, .equal));
+            try diffs.append(try Diff.fromSlice(allocator, text1, .equal));
         }
         return diffs.toOwnedSlice();
     }
 
+    var text_chopped1: []const u8 = undefined;
+    var text_chopped2: []const u8 = undefined;
+    var common_prefix: []const u8 = undefined;
+    var common_suffix: []const u8 = undefined;
+
     // Trim off common prefix (speedup).
-    var common_length = diff_funcs.diffCommonPrefix(text1, text2);
-    const common_prefix = text1[0..common_length];
-    var text_chopped1 = text1[common_length..];
-    var text_chopped2 = text2[common_length..];
+    {
+        const common_length = diff_funcs.diffCommonPrefix(text1, text2);
+        common_prefix = text1[0..common_length];
+        text_chopped1 = text1[common_length..];
+        text_chopped2 = text2[common_length..];
+    }
 
     // Trim off common suffix (speedup).
-    common_length = diff_funcs.diffCommonSuffix(text_chopped1, text_chopped2);
-    const common_suffix = text_chopped1[text_chopped1.len - common_length ..];
-    text_chopped1 = text_chopped1[0 .. text_chopped1.len - common_length];
-    text_chopped2 = text_chopped2[0 .. text_chopped2.len - common_length];
+    {
+        const common_length = diff_funcs.diffCommonSuffix(text_chopped1, text_chopped2);
+        common_suffix = text_chopped1[text_chopped1.len - common_length ..];
+        text_chopped1 = text_chopped1[0 .. text_chopped1.len - common_length];
+        text_chopped2 = text_chopped2[0 .. text_chopped2.len - common_length];
+    }
 
     // Compute the diff on the middle block.
     {
         const computed_diffs = try diffComputeTimer(allocator, diff_timeout, text_chopped1, text_chopped2, check_lines, ns_time_limit, timer);
         defer allocator.free(computed_diffs);
+        errdefer for (computed_diffs) |*diff| diff.deinit(allocator);
         try diffs.appendSlice(computed_diffs);
     }
 
     // Restore the prefix and suffix.
     if (common_prefix.len != 0) {
-        try diffs.insert(0, try DMP.Diff.fromSlice(allocator, common_prefix, .equal));
+        try diffs.insert(0, try Diff.fromSlice(allocator, common_prefix, .equal));
     }
     if (common_suffix.len != 0) {
-        try diffs.append(try DMP.Diff.fromSlice(allocator, common_suffix, .equal));
+        try diffs.append(try Diff.fromSlice(allocator, common_suffix, .equal));
     }
 
     var res = try diffs.toOwnedSlice();
@@ -91,24 +103,25 @@ fn diffMainStringStringBoolTimeoutTimer(allocator: Allocator, diff_timeout: f32,
 
 ///Find the differences between two texts.  Assumes that the texts do not
 ///have any common prefix or suffix.
-pub fn diffCompute(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, checklines: bool, ns_time_limit: u64) ![]DMP.Diff {
-    var timer = try std.time.Timer.start();
+pub fn diffCompute(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, checklines: bool, ns_time_limit: u64) ![]Diff {
+    var timer = std.time.Timer.start() catch @panic("Timer not available");
     return diffComputeTimer(allocator, diff_timeout, text1, text2, checklines, ns_time_limit, &timer);
 }
-fn diffComputeTimer(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, checklines: bool, ns_time_limit: u64, timer: *std.time.Timer) Allocator.Error![]DMP.Diff {
-    var diffs = std.ArrayList(DMP.Diff).init(allocator);
+fn diffComputeTimer(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, checklines: bool, ns_time_limit: u64, timer: *std.time.Timer) Allocator.Error![]Diff {
+    // TODO: these need to operate on utf8 chars
+    var diffs = std.ArrayList(Diff).init(allocator);
     defer diffs.deinit();
     errdefer for (diffs.items) |*diff| diff.deinit(allocator);
 
     if (text1.len == 0) {
         // Just add some text (speedup).
-        try diffs.append(try DMP.Diff.fromSlice(allocator, text2, .insert));
+        try diffs.append(try Diff.fromSlice(allocator, text2, .insert));
         return diffs.toOwnedSlice();
     }
 
     if (text2.len == 0) {
         // Just delete some text (speedup).
-        try diffs.append(try DMP.Diff.fromSlice(allocator, text1, .delete));
+        try diffs.append(try Diff.fromSlice(allocator, text1, .delete));
         return diffs.toOwnedSlice();
     }
 
@@ -117,18 +130,18 @@ fn diffComputeTimer(allocator: Allocator, diff_timeout: f32, text1: []const u8, 
     const short_text = if (text1_longer) text2 else text1;
     if (std.mem.indexOf(u8, long_text, short_text)) |idx| {
         // Shorter text is inside the longer text (speedup).
-        const op = if (text1_longer) DMP.DiffOperation.delete else DMP.DiffOperation.insert;
-        try diffs.append(try DMP.Diff.fromSlice(allocator, long_text[0..idx], op));
-        try diffs.append(try DMP.Diff.fromSlice(allocator, short_text, .equal));
-        try diffs.append(try DMP.Diff.fromSlice(allocator, long_text[idx + short_text.len ..], op));
+        const op = if (text1_longer) DiffOperation.delete else DiffOperation.insert;
+        try diffs.append(try Diff.fromSlice(allocator, long_text[0..idx], op));
+        try diffs.append(try Diff.fromSlice(allocator, short_text, .equal));
+        try diffs.append(try Diff.fromSlice(allocator, long_text[idx + short_text.len ..], op));
         return diffs.toOwnedSlice();
     }
 
     if (short_text.len == 1) {
         // Single character string.
         // After the previous speedup, the character can't be an equality.
-        try diffs.append(try DMP.Diff.fromSlice(allocator, text1, .delete));
-        try diffs.append(try DMP.Diff.fromSlice(allocator, text2, .insert));
+        try diffs.append(try Diff.fromSlice(allocator, text1, .delete));
+        try diffs.append(try Diff.fromSlice(allocator, text2, .insert));
         return diffs.toOwnedSlice();
     }
 
@@ -144,7 +157,7 @@ fn diffComputeTimer(allocator: Allocator, diff_timeout: f32, text1: []const u8, 
 
         // Merge the results.
         try diffs.appendSlice(diffs_a);
-        try diffs.append(DMP.Diff{ .text = @constCast(hm.common), .operation = .equal });
+        try diffs.append(Diff{ .text = hm.common, .operation = .equal });
         try diffs.appendSlice(diffs_b);
 
         return diffs.toOwnedSlice();
@@ -152,52 +165,242 @@ fn diffComputeTimer(allocator: Allocator, diff_timeout: f32, text1: []const u8, 
 
     // Perform a real diff.
     if (checklines and text1.len > 100 and text2.len > 100) {
-        return diffLineModeTimer(allocator, text1, text2, ns_time_limit, timer);
+        return diffLineModeTimer(allocator, diff_timeout, text1, text2, ns_time_limit, timer);
     }
-    return diffBisectTimer(allocator, text1, text2, ns_time_limit, timer);
+    return diffBisectTimer(allocator, diff_timeout, text1, text2, ns_time_limit, timer);
 }
 
 ///Do a quick line-level diff on both strings, then rediff the parts for
 ///greater accuracy.
 ///This speedup can produce non-minimal diffs.
-pub fn diffLineMode(allocator: Allocator, text1: []const u8, text2: []const u8, ns_time_limit: u64) ![]DMP.Diff {
-    var timer = try std.time.Timer.start();
-    return diffLineModeTimer(allocator, text1, text2, ns_time_limit, &timer);
+pub fn diffLineMode(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, ns_time_limit: u64) ![]Diff {
+    var timer = std.time.Timer.start() catch @panic("Timer not available");
+    return diffLineModeTimer(allocator, diff_timeout, text1, text2, ns_time_limit, &timer);
 }
-fn diffLineModeTimer(allocator: Allocator, text1: []const u8, text2: []const u8, ns_time_limit: u64, timer: *std.time.Timer) ![]DMP.Diff {
-    _ = allocator;
-    _ = text1;
-    _ = text2;
-    _ = ns_time_limit;
-    _ = timer;
+fn diffLineModeTimer(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, ns_time_limit: u64, timer: *std.time.Timer) ![]Diff {
+    // TODO: operate on unicode (char) level rather then byte level
 
-    @compileError("Not Implemented");
+    var diffs: []Diff = undefined;
+
+    {
+        // Scan the text on a line-by-line basis first.
+        var t1 = try allocator.alloc(u8, text1.len);
+        defer allocator.free(t1);
+        std.mem.copyForwards(u8, t1, text1);
+
+        var t2 = try allocator.alloc(u8, text2.len);
+        defer allocator.free(t2);
+        std.mem.copyForwards(u8, t2, text2);
+
+        var linearray = try diffLinesToChars(allocator, &t1, &t2);
+        defer linearray.deinit();
+
+        diffs = try diffMainStringStringBoolTimeoutTimer(allocator, diff_timeout, t1, t2, false, ns_time_limit, timer);
+        errdefer {
+            for (diffs) |*diff| diff.deinit(allocator);
+            allocator.free(diffs);
+        }
+
+        // Convert the diff back to original text.
+        try diffCharsToLinesLineArray(allocator, &diffs, linearray);
+        // Eliminate freak matches (e.g. blank lines)
+        try diff_funcs.diffCleanupSemantic(allocator, &diffs);
+    }
+
+    // Rediff any replacement blocks. this time charecter-by-charecter.
+    // Add a dummy entry at the the end.
+    var diff_list = std.ArrayList(Diff).fromOwnedSlice(allocator, diffs);
+    defer diff_list.deinit();
+    errdefer for (diff_list.items) |*diff| diff.deinit(allocator);
+    try diff_list.append(try Diff.fromString(allocator, "", .equal));
+
+    var pointer: usize = 0;
+    var count_delete: usize = 0;
+    var count_insert: usize = 0;
+
+    var text_insert = std.ArrayList(u8).init(allocator);
+    defer text_insert.deinit();
+    var text_delete = std.ArrayList(u8).init(allocator);
+    defer text_delete.deinit();
+
+    while (pointer < diff_list.items.len) {
+        const diff = diff_list.items[pointer];
+        switch (diff.operation) {
+            .insert => {
+                count_insert += 1;
+                try text_insert.appendSlice(diff.text);
+            },
+            .delete => {
+                count_delete += 1;
+                try text_delete.appendSlice(diff.text);
+            },
+            .equal => {
+                // Upon reaching an equality. check for prior redundancies.
+                if (count_delete >= 1 and count_insert >= 1) {
+                    // Delete the offending records and add the merged ones.
+                    const del_idx = pointer - count_delete - count_insert;
+                    const del_len = count_delete + count_insert;
+
+                    for (diff_list.items[del_idx .. del_idx + del_len]) |*d| d.deinit(allocator);
+                    try diff_list.replaceRange(del_idx, del_len, &.{});
+                    pointer = del_idx;
+
+                    const a = try diffMainStringStringBoolTimeoutTimer(allocator, diff_timeout, text_delete.items, text_insert.items, false, ns_time_limit, timer);
+                    defer allocator.free(a);
+                    errdefer for (a) |*d| d.deinit(allocator);
+
+                    try diff_list.insertSlice(pointer, a);
+                    pointer += a.len;
+                }
+
+                count_insert = 0;
+                count_delete = 0;
+                text_delete.clearRetainingCapacity();
+                text_insert.clearRetainingCapacity();
+            },
+        }
+        pointer += 1;
+    }
+
+    // remove dummy entry at the end
+    diff_list.items.len -= 1;
+    return diff_list.toOwnedSlice();
 }
 
 ///Find the 'middle snake' of a diff, split the problem in two
 ///and return the recursively constructed diff.
 ///See Myers 1986 paper: An O(ND) Difference Algorithm and Its Variations.
-pub fn diffBisect(allocator: Allocator, text1: []const u8, text2: []const u8, ns_time_limit: u64) ![]DMP.Diff {
-    var timer = try std.time.Timer.start();
-    return diffBisectTimer(allocator, text1, text2, ns_time_limit, &timer);
+pub fn diffBisect(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, ns_time_limit: u64) ![]Diff {
+    var timer = std.time.Timer.start() catch @panic("Timer not available");
+    return diffBisectTimer(allocator, diff_timeout, text1, text2, ns_time_limit, &timer);
 }
-fn diffBisectTimer(allocator: Allocator, text1: []const u8, text2: []const u8, ns_time_limit: u64, timer: *std.time.Timer) ![]DMP.Diff {
-    _ = allocator;
-    _ = text1;
-    _ = text2;
-    _ = ns_time_limit;
-    _ = timer;
+fn diffBisectTimer(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, ns_time_limit: u64, timer: *std.time.Timer) Allocator.Error![]Diff {
+    // NOTE: chceck to see if there is any speed diffrence betweenn just getting the len and caching it in a var
+    // TODO: redo this function without all the casting and isizes
+    // TODO: operate on unicode (char) level rather then byte level
+    const max_d: isize = @intCast((text1.len + text2.len + 1) / 2);
+    const v_offset = max_d;
+    const v_length = 2 * max_d;
 
-    @compileError("Not Implemented");
+    var v1 = try allocator.alloc(isize, @intCast(v_length));
+    defer allocator.free(v1);
+    var v2 = try allocator.alloc(isize, @intCast(v_length));
+    defer allocator.free(v2);
+    for (v1, v2) |*v1e, *v2e| {
+        v1e.* = -1;
+        v2e.* = -1;
+    }
+
+    v1[@intCast(v_offset + 1)] = 0;
+    v2[@intCast(v_offset + 1)] = 0;
+
+    const delta = @as(isize, @intCast(text1.len)) - @as(isize, @intCast(text2.len));
+    // if the total number of charecters is odd, then the front path will
+    // collide with the reverse path.
+    const front = @mod(delta, 2) != 0;
+    // Offsets for start and end of k loop.
+    // Prevents mapping of space beyond the grid.
+    var k1_start: isize = 0;
+    var k1_end: isize = 0;
+    var k2_start: isize = 0;
+    var k2_end: isize = 0;
+    for (0..@intCast(max_d)) |ud| {
+        const d: isize = @intCast(ud);
+        // Bail out if deadline is reached.
+        if (timer.read() > ns_time_limit) {
+            break;
+        }
+
+        // Walk the front path one step.
+        var k1 = k1_start - d;
+        while (k1 <= d - k1_end) : (k1 += 2) {
+            const k1_offset = v_offset + k1;
+            var x1: isize = if (k1 == -d or (k1 != d and v1[@intCast(k1_offset - 1)] < v1[@intCast(k1_offset + 1)]))
+                v1[@intCast(k1_offset + 1)]
+            else
+                v1[@intCast(k1_offset - 1)] + 1;
+            var y1 = x1 - k1;
+            while (@as(usize, @intCast(x1)) < text1.len and @as(usize, @intCast(y1)) < text2.len and text1[@intCast(x1)] == text2[@intCast(y1)]) {
+                x1 += 1;
+                y1 += 1;
+            }
+            v1[@intCast(k1_offset)] = x1;
+            if (x1 > text1.len) {
+                // Ran off the right of the graph.
+                k1_end += 2;
+            } else if (y1 > text2.len) {
+                // Ran off the bottom of the graph.
+                k1_start += 2;
+            } else if (front) {
+                const k2_offset = v_offset + delta - k1;
+                if (k2_offset >= 0 and k2_offset < v_length and v2[@intCast(k2_offset)] != -1) {
+                    // Mirror x2 onto the top-left coordinate system.
+                    const x2 = @as(isize, @intCast(text1.len)) - v2[@intCast(k2_offset)];
+                    if (x1 >= x2) {
+                        // Overlap detected.
+                        return diffBisectSplitTimer(allocator, diff_timeout, text1, text2, @intCast(x1), @intCast(y1), ns_time_limit, timer);
+                    }
+                }
+            }
+        }
+
+        // Walk the reverse path one step.
+        var k2 = k2_start - d;
+        while (k2 <= d - k2_end) : (k2 += 2) {
+            const k2_offset = v_offset + k2;
+            var x2 = if (k2 == -d or (k2 != d and v2[@intCast(k2_offset - 1)] < v2[@intCast(k2_offset + 1)]))
+                v2[@intCast(k2_offset + 1)]
+            else
+                v2[@intCast(k2_offset - 1)] + 1;
+            var y2 = x2 - k2;
+            while (@as(usize, @intCast(x2)) < text1.len and @as(usize, @intCast(y2)) < text2.len and
+                text1[@intCast(@as(isize, @intCast(text1.len)) - x2 - 1)] == text2[@intCast(@as(isize, @intCast(text2.len)) - y2 - 1)])
+            {
+                x2 += 1;
+                y2 += 1;
+            }
+            v2[@intCast(k2_offset)] = x2;
+            if (@as(usize, @intCast(x2)) > text1.len) {
+                // Ran off the left of the graph.
+                k2_end += 2;
+            } else if (@as(usize, @intCast(y2)) > text2.len) {
+                k2_start += 2;
+            } else if (!front) {
+                const k1_offset = v_offset + delta - k2;
+                if (k1_offset >= 0 and k1_offset < v_length and v1[@intCast(k1_offset)] != -1) {
+                    const x1 = v1[@intCast(k1_offset)];
+                    const y1 = v_offset + x1 - k1_offset;
+                    // Mirror x2 onto top-left coordinate system
+                    x2 = @intCast(text1.len - @as(usize, @intCast(x2)));
+                    if (x1 >= x2) {
+                        // Overlap detected
+                        return diffBisectSplitTimer(allocator, diff_timeout, text1, text2, @intCast(x1), @intCast(y1), ns_time_limit, timer);
+                    }
+                }
+            }
+        }
+    }
+
+    // Diff took too long and hit deadline or
+    // number of diffs equals number of characters, no commonalitry at all.
+    var diffs = try allocator.alloc(Diff, 2);
+    errdefer allocator.free(diffs);
+    diffs[0] = try Diff.fromSlice(allocator, text1, .delete);
+    errdefer diffs[0].deinit(allocator);
+    diffs[1] = try Diff.fromSlice(allocator, text2, .insert);
+    errdefer diffs[1].deinit(allocator);
+    return diffs;
 }
 
 ///Given the location of the 'middle snake', split the diff in two parts
 ///and recurse.
-pub fn diffBisectSplit(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, x: usize, y: usize, ns_time_limit: u64) ![]DMP.Diff {
-    var timer = try std.time.Timer.start();
+pub fn diffBisectSplit(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, x: usize, y: usize, ns_time_limit: u64) ![]Diff {
+    var timer = std.time.Timer.start() catch @panic("Timer not available");
     return diffBisectSplitTimer(allocator, diff_timeout, text1, text2, x, y, ns_time_limit, &timer);
 }
-fn diffBisectSplitTimer(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, x: usize, y: usize, ns_time_limit: u64, timer: *std.time.Timer) ![]DMP.Diff {
+fn diffBisectSplitTimer(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, x: usize, y: usize, ns_time_limit: u64, timer: *std.time.Timer) Allocator.Error![]Diff {
+    std.debug.assert(x <= text1.len);
+    std.debug.assert(y <= text2.len);
     const text1a = text1[0..x];
     const text2a = text2[0..y];
     const text1b = text1[x..];
@@ -209,9 +412,9 @@ fn diffBisectSplitTimer(allocator: Allocator, diff_timeout: f32, text1: []const 
 
     const diffs2 = try diffMainStringStringBoolTimeoutTimer(allocator, diff_timeout, text1b, text2b, false, ns_time_limit, timer);
     defer allocator.free(diffs2);
-    defer for (diffs2) |*diff| diff.deinit(allocator);
+    errdefer for (diffs2) |*diff| diff.deinit(allocator);
 
-    const old_len = try utils.resize(diff_funcs.Diff, allocator, &diffs1, diffs1.len + diffs2.len);
+    const old_len = try utils.resize(Diff, allocator, &diffs1, diffs1.len + diffs2.len);
     @memcpy(diffs1.ptr[old_len..], diffs2);
 
     return diffs1;
@@ -249,7 +452,7 @@ pub fn diffLinesToCharsMunge(allocator: Allocator, text_ref: *[]u8, line_array: 
     while (lines.next()) |hl| {
         if (hl.len == 0 and lines.index == null) continue; // skip empty end
         const idx = lines.index orelse (text.len - hl.len);
-        const length = if (idx + hl.len == text.len) hl.len else hl.len + 1;
+        const length = if (lines.index == null) hl.len else hl.len + 1;
         const line = hl.ptr[0..length]; // include newline
         var line_value = line_hash.get(line);
         if (line_value == null) {
@@ -274,12 +477,12 @@ pub fn diffLinesToCharsMunge(allocator: Allocator, text_ref: *[]u8, line_array: 
     }
     text_ref.* = text;
 }
-pub fn diffCharsToLinesLineArray(allocator: Allocator, diffs: *[]DMP.Diff, line_array: LineArray) Allocator.Error!void {
+pub fn diffCharsToLinesLineArray(allocator: Allocator, diffs: *[]Diff, line_array: LineArray) Allocator.Error!void {
     return diffCharsToLines(allocator, diffs, line_array.items.*);
 }
 
 ///Rehydrate the text in a diff from a string of line hashes to real lines of text.
-pub fn diffCharsToLines(allocator: Allocator, diffs: *[]DMP.Diff, line_array: [][]const u8) Allocator.Error!void {
+pub fn diffCharsToLines(allocator: Allocator, diffs: *[]Diff, line_array: [][]const u8) Allocator.Error!void {
     var text = std.ArrayList(u21).init(allocator);
     defer text.deinit();
     for (diffs.*) |*diff| {
@@ -351,7 +554,7 @@ pub fn diffHalfMatch(allocator: Allocator, diff_timeout: f32, text1: []const u8,
     text1_suffix: []const u8,
     text2_prefix: []const u8,
     text2_suffix: []const u8,
-    common: []const u8, // needs to be freed
+    common: []u8, // needs to be freed
 } {
     if (diff_timeout <= 0) {
         // Don't risk returning a non-optimal diff if we have unlimited time.
@@ -386,7 +589,7 @@ pub fn diffHalfMatch(allocator: Allocator, diff_timeout: f32, text1: []const u8,
         hm2 = null;
     }
 
-    std.debug.assert((hm1 != null or hm2 != null) and !(hm1 != null and hm2 != null));
+    std.debug.assert((hm1 != null and hm2 == null) or (hm1 == null and hm2 != null));
     if (if (hm1 != null) hm1 else hm2) |hm| {
         return .{
             .common = hm.common,
@@ -406,7 +609,7 @@ pub fn diffHalfMatchI(allocator: Allocator, longtext: []const u8, shorttext: []c
     longtext_suffix: []const u8,
     shorttext_prefix: []const u8,
     shorttext_suffix: []const u8,
-    common: []const u8, // needs to be freed
+    common: []u8, // needs to be freed
 } {
     // Start with a 1/4 length substring at position i as a seed.
     const seed = longtext[i .. i + longtext.len / 4];
@@ -419,12 +622,9 @@ pub fn diffHalfMatchI(allocator: Allocator, longtext: []const u8, shorttext: []c
     var best_shorttext_a: []const u8 = undefined;
     var best_shorttext_b: []const u8 = undefined;
 
-    var j_n: ?usize = null;
-    while (blk: {
-        j_n = std.mem.indexOfPos(u8, shorttext, if (j_n != null) j_n.? + 1 else 0, seed);
-        break :blk j_n != null;
-    }) {
-        const j = j_n.?;
+    var j_p: ?usize = null;
+    while (std.mem.indexOfPos(u8, shorttext, if (j_p) |j| j + 1 else 0, seed)) |j| {
+        j_p = j;
         const prefix_length = diff_funcs.diffCommonPrefix(longtext[i..], shorttext[j..]);
         const suffix_length = diff_funcs.diffCommonSuffix(longtext[0..i], shorttext[0..j]);
         if (best_common_len < suffix_length + prefix_length) {
