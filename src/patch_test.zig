@@ -25,7 +25,7 @@ test "errors from text" {
         .{ .patch = "@@ _0,0 +0,0 @@\n+abc\n", .expectedPatchError = PatchError.InvalidPatchString },
         .{ .patch = "Bad\nPatch\n", .expectedPatchError = PatchError.InvalidPatchMode },
     }) |test_case| {
-        const patches = dmp.patchFromText(test_case.patch) catch |err| {
+        var patches = dmp.patchFromText(test_case.patch) catch |err| {
             if (test_case.expectedPatchError == null) return err;
             try testing.expectEqual(test_case.expectedPatchError.?, err);
             return;
@@ -46,7 +46,7 @@ test "from to text" {
         "@@ -1,9 +1,9 @@\n-f\n+F\n oo+fooba\n@@ -7,9 +7,9 @@\n obar\n-,\n+.\n  tes\n",
     };
     for (patch_strs) |patchstr| {
-        const patches = try dmp.patchFromText(patchstr);
+        var patches = try dmp.patchFromText(patchstr);
         defer patches.deinit();
 
         const strpatch = try dmp.patchToText(patches);
@@ -70,7 +70,7 @@ test "add context" {
         .{ .patch = "@@ -3 +3,2 @@\n-e\n+at\n", .text = "The quick brown fox jumps.", .expected = "@@ -1,7 +1,8 @@\n Th\n-e\n+at\n  qui\n" },
         .{ .patch = "@@ -3 +3,2 @@\n-e\n+at\n", .text = "The quick brown fox jumps.  The quick brown fox crashes.", .expected = "@@ -1,27 +1,28 @@\n Th\n-e\n+at\n  quick brown fox jumps. \n" },
     }) |test_case| {
-        const patches = try dmp.patchFromText(test_case.patch);
+        var patches = try dmp.patchFromText(test_case.patch);
         defer patches.deinit();
 
         try dmp.patchAddContext(&patches.items[0], test_case.text);
@@ -111,7 +111,7 @@ test "patch make and patch to text" {
         .{ .input1 = .{ .text = "abcdef" ** 100 }, .input2 = .{ .text = "abcdef" ** 100 ++ "123" }, .input3 = .none, .expected = "@@ -573,28 +573,31 @@\n cdefabcdefabcdefabcdefabcdef\n+123\n" },
         .{ .input1 = .{ .text = "2016-09-01T03:07:14.807830741Z" }, .input2 = .{ .text = "2016-09-01T03:07:15.154800781Z" }, .input3 = .none, .expected = "@@ -15,16 +15,16 @@\n 07:1\n+5.15\n 4\n-.\n 80\n+0\n 78\n-3074\n 1Z\n" },
     }) |test_case| {
-        const patches: PatchList = blk: {
+        var patches: PatchList = blk: {
             switch (test_case.input3) {
                 .diffs => |diffs| {
                     defer testing.allocator.free(diffs);
@@ -160,7 +160,7 @@ test "patch make and patch to text" {
     try testing.expectEqual(text1, dmp.diffText1(diffs));
     try testing.expectEqual(text2, dmp.diffText2(diffs));
 
-    const patches = try dmp.patchMakeDiffs(diffs);
+    var patches = try dmp.patchMakeDiffs(diffs);
     defer patches.deinit();
 
     const actual = try dmp.patchToText(patches);
@@ -248,7 +248,7 @@ test "patch apply" {
         .{ .text1 = "x1234567890123456789012345678901234567890123456789012345678901234567890y", .text2 = "xabcy", .text_base = "x123456789012345678901234567890-----++++++++++-----123456789012345678901234567890y", .expected = "xabcy", .expected_applies = @constCast(&[_]bool{ true, true }) },
         .{ .text1 = "x1234567890123456789012345678901234567890123456789012345678901234567890y", .text2 = "xabcy", .text_base = "x12345678901234567890---------------++++++++++---------------12345678901234567890y", .expected = "xabc12345678901234567890---------------++++++++++---------------12345678901234567890y", .expected_applies = @constCast(&[_]bool{ false, true }) },
     }) |test_case| {
-        const patches = try dmp.patchMakeStringString(test_case.text1, test_case.text2);
+        var patches = try dmp.patchMakeStringString(test_case.text1, test_case.text2);
         defer patches.deinit();
 
         const actual, const actual_applies = try dmp.patchApply(patches, test_case.text_base);

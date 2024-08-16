@@ -16,9 +16,10 @@ pub const PatchError = error{
 pub const PatchList = struct {
     items: []Patch,
     allocator: std.mem.Allocator,
-    pub fn deinit(self: PatchList) void {
+    pub fn deinit(self: *PatchList) void {
         for (self.items) |patch| patch.deinit(self.allocator);
         self.allocator.free(self.items);
+        self.* = undefined;
     }
 };
 
