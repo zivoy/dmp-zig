@@ -151,7 +151,7 @@ fn DiffMatchPatchCustom(MatchMaxContainer: type) type {
         pub inline fn patchDeepCopy(self: Self, patches: PatchList) std.mem.Allocator.Error!PatchList {
             return patch.patchDeepCopy(self.allocator, patches);
         }
-        pub inline fn patchApply(self: Self, patches: PatchList, text: [:0]const u8) std.mem.Allocator.Error!struct { []const u8, []bool } {
+        pub inline fn patchApply(self: Self, patches: PatchList, text: [:0]const u8) !struct { []const u8, []bool } {
             return patch.patchApply(MatchMaxContainer, self.allocator, self.diff_timeout, self.match_distance, self.match_threshold, self.patch_margin, self.patch_delete_threshold, patches, text);
         }
         pub inline fn patchAddPadding(self: Self, patches: *PatchList) std.mem.Allocator.Error![:0]const u8 {

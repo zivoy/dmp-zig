@@ -17,7 +17,7 @@ pub const PatchList = struct {
     items: []Patch,
     allocator: std.mem.Allocator,
     pub fn deinit(self: *PatchList) void {
-        for (self.items) |patch| patch.deinit(self.allocator);
+        for (self.items) |*patch| patch.deinit(self.allocator);
         self.allocator.free(self.items);
         self.* = undefined;
     }
@@ -79,7 +79,7 @@ pub const Patch = struct {
     }
 
     pub fn init(allocator: std.mem.Allocator, start1: usize, start2: usize, length1: usize, length2: usize) !Patch {
-        const diffs = try allocator.create(PatchDiffsArrayList);
+        const diffs = try allocator.create(PatchDiffsArrayList); // TODO: make this like diffs
         diffs.* = .{};
         return Patch{
             .start1 = start1,
@@ -90,12 +90,13 @@ pub const Patch = struct {
         };
     }
 
-    pub fn deinit(self: Patch, allocator: std.mem.Allocator) void {
+    pub fn deinit(self: *Patch, allocator: std.mem.Allocator) void {
         for (self.diffs.items) |*diff| {
             diff.deinit(allocator);
         }
         self.diffs.deinit(allocator);
         allocator.destroy(self.diffs);
+        self.* = undefined;
     }
 };
 
@@ -142,6 +143,10 @@ pub fn patchAddContext(comptime MatchMaxContainer: type, allocator: Allocator, p
 ///A set of diffs will be computed.
 pub fn patchMakeStringString(comptime MatchMaxContainer: type, allocator: Allocator, patch_margin: u16, diff_edit_cost: u16, diff_timeout: f32, text1: [:0]const u8, text2: [:0]const u8) !PatchList {
     var diffs = try diff_funcs.diffMainStringStringBool(allocator, diff_timeout, text1, text2, true);
+    errdefer {
+        for (diffs) |*diff| diff.deinit(allocator);
+        allocator.free(diffs);
+    }
     if (diffs.len > 2) {
         try diff_funcs.diffCleanupSemantic(allocator, &diffs);
         try diff_funcs.diffCleanupEfficiency(allocator, diff_edit_cost, &diffs);
@@ -273,7 +278,7 @@ pub fn patchDeepCopy(allocator: Allocator, patches: PatchList) Allocator.Error!P
 
 ///Merge a set of patches onto the text.  Return a patched text, as well
 ///as an array of true/false values indicating which patches were applied.
-pub fn patchApply(comptime MatchMaxContainer: type, allocator: Allocator, diff_timeout: f32, match_distance: u32, match_threshold: f32, patch_margin: u16, patch_delete_threshold: f32, patches: PatchList, text: [:0]const u8) !struct { []const u8, []bool } {
+pub fn patchApply(comptime MatchMaxContainer: type, allocator: Allocator, diff_timeout: f32, match_distance: u32, match_threshold: f32, patch_margin: u16, patch_delete_threshold: f32, patches: PatchList, text: [:0]const u8) (match_funcs.MatchError || Allocator.Error)!struct { []const u8, []bool } {
     const match_max_bits = @bitSizeOf(MatchMaxContainer);
 
     var applied = try allocator.alloc(bool, patches.items.len);
@@ -289,6 +294,7 @@ pub fn patchApply(comptime MatchMaxContainer: type, allocator: Allocator, diff_t
     defer patchesCopy.deinit();
 
     const null_padding = try patchAddPadding(allocator, patch_margin, &patchesCopy);
+    defer allocator.free(null_padding);
 
     var working_text = try std.ArrayList(u8).initCapacity(allocator, text.len + 2 * null_padding.len);
     defer working_text.deinit();
@@ -390,24 +396,14 @@ pub fn patchApply(comptime MatchMaxContainer: type, allocator: Allocator, diff_t
     return .{ try working_text.toOwnedSlice(), applied };
 }
 
-const null_padding_str = blk: {
-    const n_items = 255;
-    var np: [n_items]u8 = undefined;
-    for (0..n_items) |i| {
-        np[i] = i + 1;
-    }
-    break :blk np;
-};
-
 ///Add some padding on text start and end so that edges can match something.
 ///Intended to be called only from within `patchApply`.
 pub fn patchAddPadding(allocator: Allocator, patch_margin: u16, patches: *PatchList) Allocator.Error![:0]const u8 {
     const padding_length = patch_margin;
-    // const null_padding = try allocator.alloc(u8, padding_length);
-    // for (0..padding_length) |i| {
-    //     null_padding[i] = i + 1;
-    // }
-    const null_padding = null_padding_str[0..padding_length :0];
+    const null_padding = try allocator.allocSentinel(u8, padding_length, 0);
+    for (0..padding_length) |i| {
+        null_padding[i] = @intCast(i + 1);
+    }
 
     // Bump all the patches forward.
     for (patches.items) |*patch| {
@@ -484,16 +480,15 @@ pub fn patchSplitMax(comptime MatchMaxContainer: type, allocator: Allocator, pat
 
     var patchlist = std.ArrayList(Patch).fromOwnedSlice(allocator, patches.items);
     defer patchlist.deinit();
-    errdefer for (patchlist.items) |patch_e| patch_e.deinit(allocator);
 
     var x: usize = 0;
-    while (utils.getIdxOrNull(Patch, patchlist, x)) |big_patch| {
+    while (utils.getIdxOrNull(Patch, patchlist, x)) |*big_patch| {
         defer x += 1;
         if (big_patch.length1 <= patch_size) continue;
 
         // Remove the big old patch.
         _ = patchlist.orderedRemove(x);
-        defer big_patch.deinit(allocator);
+        @constCast(big_patch).deinit(allocator);
         x -= 1;
 
         start1 = big_patch.start1;
@@ -596,7 +591,7 @@ pub fn patchToText(allocator: Allocator, patches: PatchList) ![:0]const u8 {
 pub fn patchFromText(allocator: Allocator, textline: [:0]const u8) (PatchError || Allocator.Error)!PatchList {
     var patches = std.ArrayList(Patch).init(allocator);
     defer patches.deinit();
-    errdefer for (patches.items) |patch| patch.deinit(allocator);
+    errdefer for (patches.items) |*patch| patch.deinit(allocator);
 
     if (textline.len == 0) {
         return .{ .items = try patches.toOwnedSlice(), .allocator = allocator };

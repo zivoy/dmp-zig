@@ -1289,7 +1289,6 @@ test "levenstein" {
 }
 
 test "bisect" {
-    if (true) return error.SkipZigTest;
     const dmp = DMP.init(testing.allocator);
 
     const text1: []const u8 = "cat";
@@ -1310,11 +1309,11 @@ test "bisect" {
         try Diff.fromString(testing.allocator, "cat", .delete),
         try Diff.fromString(testing.allocator, "map", .insert),
     } } }) |test_case| {
-        defer for (test_case.expected) |*diff| diff.deinit();
+        defer for (test_case.expected) |*diff| @constCast(diff).deinit(testing.allocator);
 
-        const actual = try DiffPrivate.diffBisect(testing.allocator, text1, text2, test_case.deadline);
+        const actual = try DiffPrivate.diffBisect(testing.allocator, dmp.diff_timeout, text1, text2, test_case.deadline);
         defer testing.allocator.free(actual);
-        defer for (actual) |*diff| diff.deinit();
+        defer for (actual) |*diff| diff.deinit(testing.allocator);
 
         try testing.expectEqual(test_case.expected.len, actual.len);
         for (test_case.expected, actual) |expected, diff| {
@@ -1636,12 +1635,10 @@ test "diff main linemode" {
 }
 
 test "partial line index" {
-    if (true) return error.SkipZigTest;
     const dmp = DMP.init(testing.allocator);
     var text1 = testString(
-        \\line1
-        \\line2
-        \\line3
+        \\line 1
+        \\line 2
         \\line 3
         \\line 4
         \\line 5
@@ -1682,9 +1679,19 @@ test "partial line index" {
     };
     defer for (expect) |*diff| @constCast(diff).deinit(testing.allocator);
 
-    try testing.expectEqual(expect.len, diffs.len);
-    for (expect, diffs) |expected, diff| {
-        try testing.expectEqual(expected.operation, diff.operation);
-        try testing.expectEqualStrings(expected.text, diff.text);
-    }
+    const err: anyerror!void = blk: {
+        testing.expectEqual(expect.len, diffs.len) catch |err| break :blk err;
+        for (expect, diffs) |expected, diff| {
+            testing.expectEqual(expected.operation, diff.operation) catch |err| break :blk err;
+            testing.expectEqualStrings(expected.text, diff.text) catch |err| break :blk err;
+        }
+    };
+    err catch |e| {
+        std.debug.print("\n", .{});
+        for (diffs) |diff| {
+            std.debug.print("  {s} - \"{s}\"\n", .{ @tagName(diff.operation), diff.text });
+        }
+        std.debug.print("\n", .{});
+        return e;
+    };
 }
