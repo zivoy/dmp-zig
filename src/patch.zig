@@ -139,11 +139,11 @@ pub fn patchAddContext(comptime MatchMaxContainer: type, allocator: Allocator, p
 // patch make parts
 ///Compute a list of patches to turn text1 into text2.
 ///A set of diffs will be computed.
-pub fn patchMakeStringString(comptime MatchMaxContainer: type, allocator: Allocator, patch_margin: u16, diff_timeout: f32, text1: [:0]const u8, text2: [:0]const u8) !PatchList {
+pub fn patchMakeStringString(comptime MatchMaxContainer: type, allocator: Allocator, patch_margin: u16, diff_edit_cost: u16, diff_timeout: f32, text1: [:0]const u8, text2: [:0]const u8) !PatchList {
     var diffs = try diff_funcs.diffMainStringStringBool(allocator, diff_timeout, text1, text2, true);
     if (diffs.len > 2) {
         try diff_funcs.diffCleanupSemantic(allocator, &diffs);
-        try diff_funcs.diffCleanupEfficiency(allocator, &diffs);
+        try diff_funcs.diffCleanupEfficiency(allocator, diff_edit_cost, &diffs);
     }
 
     return patchMakeStringDiffs(MatchMaxContainer, allocator, patch_margin, text1, diffs);
@@ -272,7 +272,7 @@ pub fn patchDeepCopy(allocator: Allocator, patches: PatchList) Allocator.Error!P
 
 ///Merge a set of patches onto the text.  Return a patched text, as well
 ///as an array of true/false values indicating which patches were applied.
-pub fn patchApply(comptime MatchMaxContainer: type, allocator: Allocator, patch_delete_threshold: f32, patches: PatchList, text: [:0]const u8) !struct { []const u8, []bool } {
+pub fn patchApply(comptime MatchMaxContainer: type, allocator: Allocator, diff_timeout: f32, match_distance: u32, match_threshold: f32, patch_margin: u16, patch_delete_threshold: f32, patches: PatchList, text: [:0]const u8) !struct { []const u8, []bool } {
     const match_max_bits = @bitSizeOf(MatchMaxContainer);
 
     var applied = try allocator.alloc(bool, patches.items.len);
@@ -287,7 +287,7 @@ pub fn patchApply(comptime MatchMaxContainer: type, allocator: Allocator, patch_
     var patchesCopy = try patchDeepCopy(allocator, patches);
     defer patchesCopy.deinit();
 
-    const null_padding = try patchAddPadding(allocator, &patchesCopy);
+    const null_padding = try patchAddPadding(allocator, patch_margin, &patchesCopy);
 
     var working_text = try std.ArrayList(u8).initCapacity(allocator, text.len + 2 * null_padding.len);
     defer working_text.deinit();
@@ -295,7 +295,7 @@ pub fn patchApply(comptime MatchMaxContainer: type, allocator: Allocator, patch_
     try working_text.appendSlice(text);
     try working_text.appendSlice(null_padding);
 
-    try patchSplitMax(allocator, &patchesCopy);
+    try patchSplitMax(MatchMaxContainer, allocator, patch_margin, &patchesCopy);
 
     var x: usize = 0;
     // delta keeps track of the offset between the expected and actual location
@@ -305,22 +305,23 @@ pub fn patchApply(comptime MatchMaxContainer: type, allocator: Allocator, patch_
     var delta: isize = 0;
     for (patchesCopy.items) |patch| {
         const expected_loc: usize = @intCast(@as(isize, @intCast(patch.start2)) + delta);
-        const text1 = try diff_funcs.diffText1(patch.diffs.items);
+        const text1 = try diff_funcs.diffText1(allocator, patch.diffs.items);
+        errdefer allocator.free(text1);
         var start_loc: ?usize = null;
         var end_loc: ?usize = null;
         if (text1.len > match_max_bits) {
             // `patchSplitMax` will only provide an oversized pattern in the case of
             // a monster delete.
-            start_loc = try match_funcs.matchMain(allocator, working_text.items, text1[0..match_max_bits], expected_loc);
+            start_loc = try match_funcs.matchMain(MatchMaxContainer, allocator, match_distance, match_threshold, working_text.items, text1[0..match_max_bits], expected_loc);
             if (start_loc != null) {
-                end_loc = try match_funcs.matchMain(allocator, working_text.items, text1[match_max_bits..], expected_loc + text1.len - match_max_bits);
+                end_loc = try match_funcs.matchMain(MatchMaxContainer, allocator, match_distance, match_threshold, working_text.items, text1[match_max_bits..], expected_loc + text1.len - match_max_bits);
                 if (end_loc == null or start_loc.? >= end_loc.?) {
                     // Can't find valid trailing context.  Drop this patch.
                     start_loc = null;
                 }
             }
         } else {
-            start_loc = try match_funcs.matchMain(working_text.items, text1, expected_loc);
+            start_loc = try match_funcs.matchMain(MatchMaxContainer, allocator, match_distance, match_threshold, working_text.items, text1, expected_loc);
         }
         if (start_loc == null) {
             // No match found.  :(
@@ -350,15 +351,15 @@ pub fn patchApply(comptime MatchMaxContainer: type, allocator: Allocator, patch_
                 working_text.items.len = len;
             } else {
                 // Imperfect match.  Run a diff to get a framework of equivalent indices.
-                var diffs = try diff_funcs.diffMainStringStringBool(allocator, text1, text2[0.. :0], false);
+                var diffs = try diff_funcs.diffMainStringStringBool(allocator, diff_timeout, text1, text2[0.. :0], false);
                 errdefer allocator.free(diffs);
-                errdefer for (diffs) |diff| diff.deinit(allocator);
+                errdefer for (diffs) |*diff| diff.deinit(allocator);
 
                 if (text1.len > match_max_bits and @as(f32, @floatFromInt(diff_funcs.diffLevenshtein(diffs))) / @as(f32, @floatFromInt(text1.len)) > patch_delete_threshold) {
                     // The end points match, but the content is unacceptably bad.
                     applied[x] = false;
                 } else {
-                    diff_funcs.diffCleanupSemanticLossless(allocator, &diffs);
+                    try diff_funcs.diffCleanupSemanticLossless(allocator, &diffs);
                     var index1: usize = 0;
                     for (patch.diffs.items) |diff| {
                         if (diff.operation != .equal) {
@@ -426,7 +427,7 @@ pub fn patchAddPadding(allocator: Allocator, patch_margin: u16, patches: *PatchL
     } else if (padding_length > first_patch.diffs.items[0].text.len) {
         // Grow first equality.
         const extra_length = padding_length - first_patch.diffs.items[0].text.len;
-        const old_len = try utils.resize(u8, allocator, &first_patch.diffs.items[0].text.text, padding_length);
+        const old_len = try utils.resize(u8, allocator, &first_patch.diffs.items[0].text, padding_length);
 
         std.mem.copyBackwards(
             u8,
@@ -550,6 +551,7 @@ pub fn patchSplitMax(comptime MatchMaxContainer: type, allocator: Allocator, pat
 
             // Append the end context for this patch.
             const dt1 = try diff_funcs.diffText1(allocator, big_patch.diffs.items);
+            errdefer allocator.free(dt1);
             if (dt1.len > patch_margin) {
                 postcontext = dt1[0..patch_margin];
             } else {
@@ -561,7 +563,7 @@ pub fn patchSplitMax(comptime MatchMaxContainer: type, allocator: Allocator, pat
                 patch.length2 += postcontext.len;
                 if (patch.diffs.items.len != 0 and patch.diffs.getLast().operation == .equal) {
                     var last_diff = patch.diffs.getLast();
-                    const old_len = utils.resize(u8, allocator, &last_diff.text, last_diff.text.len + postcontext.len);
+                    const old_len = try utils.resize(u8, allocator, &last_diff.text, last_diff.text.len + postcontext.len);
                     @memcpy(last_diff.text[old_len..], postcontext);
                 } else {
                     try patch.diffs.append(allocator, try Diff.fromSlice(allocator, postcontext, .equal));
