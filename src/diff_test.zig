@@ -903,7 +903,6 @@ test "cleanup semantic" {
 }
 
 test "cleanup efficiency" {
-    if (true) return error.SkipZigTest;
     const TestCase = struct {
         diffs: []Diff,
         expected: []const Diff,
@@ -994,17 +993,27 @@ test "cleanup efficiency" {
             defer testing.allocator.free(diffs);
             defer for (diffs) |*diff| diff.deinit(testing.allocator);
 
-            dmp.diffCleanupEfficiency(&diffs);
+            try dmp.diffCleanupEfficiency(&diffs);
 
-            try testing.expectEqual(test_case.expected.len, diffs.len);
-            for (test_case.expected, diffs) |expected, diff| {
-                try testing.expectEqual(expected.operation, diff.operation);
-                try testing.expectEqualStrings(expected.text, diff.text);
-            }
+            const err: anyerror!void = blk: {
+                testing.expectEqual(test_case.expected.len, diffs.len) catch |err| break :blk err;
+                for (test_case.expected, diffs) |expected, diff| {
+                    testing.expectEqual(expected.operation, diff.operation) catch |err| break :blk err;
+                    testing.expectEqualStrings(expected.text, diff.text) catch |err| break :blk err;
+                }
+            };
+            err catch |e| {
+                std.debug.print("\n1 - {d}\n", .{i + 1});
+                for (diffs) |diff| {
+                    std.debug.print("  {s} - \"{s}\"\n", .{ @tagName(diff.operation), diff.text });
+                }
+                std.debug.print("\n", .{});
+                return e;
+            };
         }
     }
 
-    dmp.diff_edit_cost = 4;
+    dmp.diff_edit_cost = 5;
 
     {
         const test_cases = [_]TestCase{
@@ -1023,19 +1032,29 @@ test "cleanup efficiency" {
             },
         };
 
-        for (test_cases) |test_case| {
+        for (test_cases, 0..) |test_case, i| {
             var diffs = test_case.diffs;
             defer testing.allocator.free(diffs);
             defer for (diffs) |*diff| diff.deinit(testing.allocator);
             defer for (test_case.expected) |*diff| @constCast(diff).deinit(testing.allocator);
 
-            dmp.diffCleanupEfficiency(&diffs);
+            try dmp.diffCleanupEfficiency(&diffs);
 
-            try testing.expectEqual(test_case.expected.len, diffs.len);
-            for (test_case.expected, diffs) |expected, diff| {
-                try testing.expectEqual(expected.operation, diff.operation);
-                try testing.expectEqualStrings(expected.text, diff.text);
-            }
+            const err: anyerror!void = blk: {
+                testing.expectEqual(test_case.expected.len, diffs.len) catch |err| break :blk err;
+                for (test_case.expected, diffs) |expected, diff| {
+                    testing.expectEqual(expected.operation, diff.operation) catch |err| break :blk err;
+                    testing.expectEqualStrings(expected.text, diff.text) catch |err| break :blk err;
+                }
+            };
+            err catch |e| {
+                std.debug.print("\n2 - {d}\n", .{i + 1});
+                for (diffs) |diff| {
+                    std.debug.print("  {s} - \"{s}\"\n", .{ @tagName(diff.operation), diff.text });
+                }
+                std.debug.print("\n", .{});
+                return e;
+            };
         }
     }
 }

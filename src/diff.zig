@@ -149,9 +149,9 @@ pub fn diffCleanupSemantic(allocator: Allocator, diffs: *[]Diff) !void {
             // Duplicate record
             try diff_list.insert(equalities.getLast(), try Diff.fromSlice(allocator, last_equality.?, .delete));
 
-            // Change second copy to insert
+            // Change second copy to insert.
             diff_list.items[equalities.getLast() + 1].operation = .insert;
-            // Thow away the equality that was deleted
+            // Thow away the equality that was deleted.
             equalities.items.len -= 1;
 
             if (equalities.items.len > 0) {
@@ -362,7 +362,7 @@ pub fn diffCleanupSemanticLossless(allocator: Allocator, diffs: *[]Diff) !void {
 }
 
 ///Reduce the number of edits by eliminating operationally trivial equalities.
-pub fn diffCleanupEfficiency(allocator: Allocator, diffs: *[]Diff) !void {
+pub fn diffCleanupEfficiency(allocator: Allocator, diff_edit_cost: u16, diffs: *[]Diff) !void {
     if (diffs.len == 0) return;
 
     var diff_list = std.ArrayList(Diff).fromOwnedSlice(allocator, diffs.*);
@@ -371,8 +371,111 @@ pub fn diffCleanupEfficiency(allocator: Allocator, diffs: *[]Diff) !void {
         diffs.* = diff_o;
     } else |_| {};
 
+    var changes = false;
+
+    var equalities = try std.ArrayList(usize).initCapacity(allocator, diff_list.items.len);
+    defer equalities.deinit();
+
+    var last_equality: ?[]const u8 = null;
+    var pointer: usize = 0;
+    // Is there an insertion operation before the last equality.
+    var pre_insert = false;
+    // Is there a deletion operation before the last equality.
+    var pre_delete = false;
+    // Is there an insertion operation after the last equality.
+    var post_insert = false;
+    // Is there a deletion operation after the last equality.
+    var post_delete = false;
+
+    while (pointer < diff_list.items.len) {
+        const diff = diff_list.items[pointer];
+        if (diff.operation == .equal) {
+            // Equality found.
+            if (diff.text.len < diff_edit_cost and (post_insert or post_delete)) {
+                // Candidate found.
+                equalities.appendAssumeCapacity(pointer);
+                pre_insert = post_insert;
+                pre_delete = post_delete;
+                last_equality = diff.text;
+            } else {
+                // Not a candidate and can never become one.
+                equalities.clearRetainingCapacity();
+                last_equality = null;
+            }
+            post_insert = false;
+            post_delete = false;
+
+            pointer += 1;
+            continue;
+        }
+
+        // An insertion or deletion.
+        if (diff.operation == .delete) {
+            post_delete = true;
+        } else {
+            post_insert = true;
+        }
+
+        // Five types to be split:
+        // <ins>A</ins><del>B</del>XY<ins>C</ins><del>D</del>
+        // <ins>A</ins>X<ins>C</ins><del>D</del>
+        // <ins>A</ins><del>B</del>X<ins>C</ins>
+        // <ins>A</del>X<ins>C</ins><del>D</del>
+        // <ins>A</ins><del>B</del>X<del>C</del>
+        const sum_pres = blk: {
+            var int: u3 = 0;
+            if (pre_insert) int += 1;
+            if (pre_delete) int += 1;
+            if (post_insert) int += 1;
+            if (post_delete) int += 1;
+            break :blk int;
+        };
+        if (last_equality != null and
+            ((pre_insert and pre_delete and post_insert and post_delete) or
+            ((last_equality.?.len < diff_edit_cost / 2) and sum_pres == 3)))
+        {
+            // Duplocate record.
+            try diff_list.insert(equalities.getLast(), try Diff.fromSlice(allocator, last_equality.?, .delete));
+
+            // Change second copy to insert.
+            diff_list.items[equalities.getLast() + 1].operation = .insert;
+            // Throw away equality that was just deleted.
+            equalities.items.len -= 1;
+            last_equality = null;
+
+            if (pre_insert and pre_delete) {
+                // No changes made which could affect previous entry, keep going.
+                post_insert = true;
+                post_delete = true;
+                equalities.clearRetainingCapacity();
+                pointer += 1;
+            } else {
+                if (equalities.items.len > 0) {
+                    equalities.items.len -= 1;
+                }
+                if (equalities.items.len > 0) {
+                    pointer = equalities.getLast() + 1;
+                } else {
+                    pointer = 0;
+                }
+                post_insert = false;
+                post_delete = false;
+            }
+            changes = true;
+            continue;
+        }
+
+        pointer += 1;
+    }
+
+    if (changes) {
+        diffs.* = try diff_list.toOwnedSlice();
+        try diffCleanupMerge(allocator, diffs);
+        diff_list.capacity = diffs.len;
+        diff_list.items = diffs.*;
+    }
+
     diffs.* = try diff_list.toOwnedSlice();
-    @compileError("Not Implemented");
 }
 
 ///Reorder and merge like edit sections.  Merge equalities.

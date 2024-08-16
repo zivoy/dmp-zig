@@ -80,7 +80,7 @@ fn DiffMatchPatchCustom(MatchMaxContainer: type) type {
             return diff.diffCleanupSemanticLossless(self.allocator, diffs);
         }
         pub inline fn diffCleanupEfficiency(self: Self, diffs: *[]Diff) !void {
-            return diff.diffCleanupEfficiency(self.allocator, diffs);
+            return diff.diffCleanupEfficiency(self.allocator, self.diff_edit_cost, diffs);
         }
         pub inline fn diffCleanupMerge(self: Self, diffs: *[]Diff) !void {
             return diff.diffCleanupMerge(self.allocator, diffs);
