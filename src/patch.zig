@@ -26,7 +26,7 @@ pub const PatchList = struct {
 pub const PatchDiffsArrayList = std.ArrayListUnmanaged(Diff);
 pub const Patch = struct {
     diffs: *PatchDiffsArrayList,
-    start1: usize, // TODO: find other u32s that should be usizes
+    start1: usize,
     start2: usize,
     length1: usize,
     length2: usize,

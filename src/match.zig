@@ -35,6 +35,15 @@ pub fn bitap(comptime MatchMaxContainer: type, allocator: Allocator, match_dista
     if (!(match_max_bits == 0 or pattern.len <= match_max_bits)) {
         return MatchError.PatternTooLong;
     }
+    const ShiftContainer: type = comptime blk: {
+        const t = std.builtin.Type{
+            .Int = .{
+                .signedness = .unsigned,
+                .bits = @ceil(@log2(@as(f32, @floatFromInt(match_max_bits)))),
+            },
+        };
+        break :blk @Type(t);
+    };
 
     // init alphabet
     const alphabet = MatchPrivate.match_alphabet(MatchMaxContainer, pattern);
@@ -43,24 +52,24 @@ pub fn bitap(comptime MatchMaxContainer: type, allocator: Allocator, match_dista
     var score_threshold: f64 = @floatCast(match_threshold);
     // Is there a nearby exact match? (speedup)
     if (std.mem.indexOfPos(u8, text, loc, pattern)) |idx_best_loc| {
-        score_threshold = @min(score_threshold, MatchPrivate.bitapScore(match_distance, 0, @intCast(idx_best_loc), loc, pattern));
+        score_threshold = @min(score_threshold, MatchPrivate.bitapScore(match_distance, 0, idx_best_loc, loc, pattern));
         // What about in the other direction? (speedup)
         if (std.mem.lastIndexOf(u8, text, pattern)) |last_best_loc| {
-            score_threshold = @min(score_threshold, MatchPrivate.bitapScore(match_distance, 0, @intCast(last_best_loc), loc, pattern));
+            score_threshold = @min(score_threshold, MatchPrivate.bitapScore(match_distance, 0, last_best_loc, loc, pattern));
         }
     }
 
     // init bit arrays
-    const match_mask: u32 = @as(u32, 1) << @as(u5, @intCast(pattern.len - 1));
+    const match_mask: MatchMaxContainer = @as(MatchMaxContainer, 1) << @as(ShiftContainer, @intCast(pattern.len - 1));
     var best_loc: ?usize = null;
 
     var bin_min: usize = 0;
     var bin_mid: usize = 0;
     var bin_max: usize = pattern.len + text.len;
 
-    var last_rd: []u32 = undefined;
+    var last_rd: []MatchMaxContainer = undefined;
     var last_rd_set = false;
-    var rd: []u32 = undefined;
+    var rd: []MatchMaxContainer = undefined;
 
     for (0..pattern.len) |d| {
         // Scan for the best match; each iteration allows for one more error.
@@ -69,7 +78,7 @@ pub fn bitap(comptime MatchMaxContainer: type, allocator: Allocator, match_dista
         bin_min = 0;
         bin_mid = bin_max;
         while (bin_min < bin_mid) {
-            if (MatchPrivate.bitapScore(match_distance, @intCast(d), loc + bin_mid, loc, pattern) <= score_threshold) {
+            if (MatchPrivate.bitapScore(match_distance, d, loc + bin_mid, loc, pattern) <= score_threshold) {
                 bin_min = bin_mid;
             } else {
                 bin_max = bin_mid;
@@ -78,16 +87,16 @@ pub fn bitap(comptime MatchMaxContainer: type, allocator: Allocator, match_dista
         }
         // Use the result from this iteration as the maximum for the next.
         bin_max = bin_mid;
-        var start: isize = @max(1, @as(i32, @intCast(loc)) - @as(i32, @intCast(bin_mid)) + 1);
+        var start: isize = @max(1, @as(isize, @intCast(loc)) - @as(isize, @intCast(bin_mid)) + 1); // TODO:
         const finish: usize = @min(loc + bin_mid, text.len) + pattern.len;
 
-        rd = try allocator.alloc(u32, finish + 2);
+        rd = try allocator.alloc(MatchMaxContainer, finish + 2);
 
-        rd[finish + 1] = (@as(u32, 1) << @as(u5, @intCast(d))) - 1;
+        rd[finish + 1] = (@as(MatchMaxContainer, 1) << @as(ShiftContainer, @intCast(d))) - 1;
 
         var j = finish;
         while (j >= start) : (j -= 1) {
-            var char_match: u32 = 0;
+            var char_match: MatchMaxContainer = 0;
             if (text.len <= j - 1) {
                 // Out of range
                 char_match = 0;
@@ -103,14 +112,14 @@ pub fn bitap(comptime MatchMaxContainer: type, allocator: Allocator, match_dista
                 rd[j] = ((rd[j + 1] << 1) | 1) & char_match | (((last_rd[j + 1] | last_rd[j]) << 1) | 1) | last_rd[j + 1];
             }
             if ((rd[j] & match_mask) != 0) {
-                const score = MatchPrivate.bitapScore(match_distance, @intCast(d), j - 1, loc, pattern);
+                const score = MatchPrivate.bitapScore(match_distance, d, j - 1, loc, pattern);
                 // this match will most likely be better then any existing match, but double check
                 if (score <= score_threshold) {
                     score_threshold = score;
                     best_loc = j - 1;
                     if (best_loc.? > loc) {
                         // when passing loc, dont exceed current distance from loc
-                        start = @max(1, 2 * @as(i32, @intCast(loc)) - @as(i32, @intCast(best_loc.?)));
+                        start = @max(1, 2 * @as(isize, @intCast(loc)) - @as(isize, @intCast(best_loc.?)));
                     } else {
                         // already passed loc
                         break;
@@ -118,7 +127,7 @@ pub fn bitap(comptime MatchMaxContainer: type, allocator: Allocator, match_dista
                 }
             }
         }
-        if (MatchPrivate.bitapScore(match_distance, @intCast(d + 1), loc, loc, pattern) > score_threshold) {
+        if (MatchPrivate.bitapScore(match_distance, d + 1, loc, loc, pattern) > score_threshold) {
             // no hope for a better match at greater error levels
             break;
         }
