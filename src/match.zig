@@ -87,7 +87,7 @@ pub fn bitap(comptime MatchMaxContainer: type, allocator: Allocator, match_dista
         }
         // Use the result from this iteration as the maximum for the next.
         bin_max = bin_mid;
-        var start: isize = @max(1, @as(isize, @intCast(loc)) - @as(isize, @intCast(bin_mid)) + 1); // TODO:
+        var start: isize = @max(1, @as(isize, @intCast(loc)) - @as(isize, @intCast(bin_mid)) + 1);
         const finish: usize = @min(loc + bin_mid, text.len) + pattern.len;
 
         rd = try allocator.alloc(MatchMaxContainer, finish + 2);

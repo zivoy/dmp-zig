@@ -7,7 +7,7 @@ const Diff = @import("diff.zig").Diff;
 const DiffError = @import("diff.zig").Error;
 
 const testing = std.testing;
-// INFO: these tests have an issue where they wont be deinited if it failes in the middle
+// INFO: some tests have an issue where they wont be deinited if it failes in the middle
 
 fn testString(text: []const u8) []u8 {
     const line = testing.allocator.alloc(u8, text.len) catch @panic("OOM");
@@ -178,10 +178,26 @@ test "bisect split" {
     defer testing.allocator.free(diffs);
     defer for (diffs) |*diff| diff.deinit(testing.allocator);
 
-    for (diffs) |diff| {
+    // NOTE: this needs to be verified against another implementation
+    const expected: []const Diff = &.{
+        try Diff.fromSlice(testing.allocator, "STUV", .delete),
+        try Diff.fromSlice(testing.allocator, "WĺĻļ", .insert),
+        try Diff.fromSlice(testing.allocator, "\x05", .equal),
+        try Diff.fromSlice(testing.allocator, "WX", .delete),
+        try Diff.fromSlice(testing.allocator, "Y", .insert),
+        try Diff.fromSlice(testing.allocator, "\x05Y", .delete),
+        try Diff.fromSlice(testing.allocator, "Z\x05", .equal),
+        try Diff.fromSlice(testing.allocator, "[", .delete),
+        try Diff.fromSlice(testing.allocator, "ĽľĿŀZ", .insert),
+    };
+    defer for (expected) |*diff| @constCast(diff).deinit(testing.allocator);
+
+    try testing.expectEqual(expected.len, diffs.len);
+    for (diffs, expected) |diff, expect| {
         try testing.expect(std.unicode.utf8ValidateSlice(diff.text));
+        try testing.expectEqual(expect.operation, diff.operation);
+        try testing.expectEqualStrings(expect.text, diff.text);
     }
-    // TODO: actual expected outcome
 }
 
 test "lines to chars" {

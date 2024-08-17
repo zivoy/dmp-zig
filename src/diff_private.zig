@@ -295,7 +295,6 @@ pub fn bisect(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2:
 }
 fn bisectTimer(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, ns_time_limit: u64, timer: *std.time.Timer) (error{InvalidUtf8} || Allocator.Error)![]Diff {
     // TODO: redo this function without all the casting and isizes
-    // TODO: operate on unicode (char) level rather then byte level
     const t1_valid = std.unicode.utf8ValidateSlice(text1);
     const t2_valid = std.unicode.utf8ValidateSlice(text2);
 
