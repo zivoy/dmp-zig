@@ -26,9 +26,6 @@ pub const Diff = struct {
     operation: DiffOperation,
     text: []u8,
 
-    pub fn fromString(allocator: std.mem.Allocator, text: [:0]const u8, operation: DiffOperation) std.mem.Allocator.Error!Diff {
-        return Diff.fromSlice(allocator, text, operation);
-    }
     pub fn fromSlice(allocator: std.mem.Allocator, text: []const u8, operation: DiffOperation) std.mem.Allocator.Error!Diff {
         const owned_text = try allocator.alloc(u8, text.len);
         @memcpy(owned_text.ptr, text);
@@ -36,10 +33,6 @@ pub const Diff = struct {
             .text = owned_text,
             .operation = operation,
         };
-    }
-
-    pub fn copy(self: Diff, allocator: std.mem.Allocator) std.mem.Allocator.Error!Diff {
-        return Diff.fromSlice(allocator, self.text, self.operation);
     }
 
     pub fn deinit(self: *Diff, allocator: std.mem.Allocator) void {
@@ -509,7 +502,7 @@ pub fn diffCleanupMerge(allocator: Allocator, diffs: *[]Diff) !void {
     } else |_| {};
 
     // Add a dummy entry at the end.
-    try diff_list.append(try Diff.fromString(allocator, "", .equal));
+    try diff_list.append(try Diff.fromSlice(allocator, "", .equal));
     var pointer: usize = 0;
     var count_delete: usize = 0;
     var count_insert: usize = 0;

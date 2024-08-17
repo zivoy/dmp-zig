@@ -275,13 +275,13 @@ test "chars to lines" {
     const test_cases = [_]TestCase{
         .{
             .diffs = &.{
-                try Diff.fromString(testing.allocator, "\x01\x02\x01", .equal),
-                try Diff.fromString(testing.allocator, "\x02\x01\x02", .insert),
+                try Diff.fromSlice(testing.allocator, "\x01\x02\x01", .equal),
+                try Diff.fromSlice(testing.allocator, "\x02\x01\x02", .insert),
             },
             .lines = try DiffPrivate.LineArray.fromSlice(testing.allocator, @constCast(&[_][]const u8{ "", "alpha\n", "beta\n" })),
             .expected = &.{
-                try Diff.fromString(testing.allocator, "alpha\nbeta\nalpha\n", .equal),
-                try Diff.fromString(testing.allocator, "beta\nalpha\nbeta\n", .insert),
+                try Diff.fromSlice(testing.allocator, "alpha\nbeta\nalpha\n", .equal),
+                try Diff.fromSlice(testing.allocator, "beta\nalpha\nbeta\n", .insert),
             },
         },
         .{
@@ -324,144 +324,144 @@ test "cleanup merge" {
         },
         .{
             .diffs = testDiffList(&.{
-                try Diff.fromString(testing.allocator, "a", .equal),
-                try Diff.fromString(testing.allocator, "b", .delete),
-                try Diff.fromString(testing.allocator, "c", .insert),
+                try Diff.fromSlice(testing.allocator, "a", .equal),
+                try Diff.fromSlice(testing.allocator, "b", .delete),
+                try Diff.fromSlice(testing.allocator, "c", .insert),
             }),
             .expected = &.{
-                try Diff.fromString(testing.allocator, "a", .equal),
-                try Diff.fromString(testing.allocator, "b", .delete),
-                try Diff.fromString(testing.allocator, "c", .insert),
+                try Diff.fromSlice(testing.allocator, "a", .equal),
+                try Diff.fromSlice(testing.allocator, "b", .delete),
+                try Diff.fromSlice(testing.allocator, "c", .insert),
             },
         },
         .{
             .diffs = testDiffList(&.{
-                try Diff.fromString(testing.allocator, "a", .equal),
-                try Diff.fromString(testing.allocator, "b", .equal),
-                try Diff.fromString(testing.allocator, "c", .equal),
+                try Diff.fromSlice(testing.allocator, "a", .equal),
+                try Diff.fromSlice(testing.allocator, "b", .equal),
+                try Diff.fromSlice(testing.allocator, "c", .equal),
             }),
-            .expected = &.{try Diff.fromString(testing.allocator, "abc", .equal)},
+            .expected = &.{try Diff.fromSlice(testing.allocator, "abc", .equal)},
         },
         .{
             .diffs = testDiffList(&.{
-                try Diff.fromString(testing.allocator, "a", .delete),
-                try Diff.fromString(testing.allocator, "b", .delete),
-                try Diff.fromString(testing.allocator, "c", .delete),
+                try Diff.fromSlice(testing.allocator, "a", .delete),
+                try Diff.fromSlice(testing.allocator, "b", .delete),
+                try Diff.fromSlice(testing.allocator, "c", .delete),
             }),
-            .expected = &.{try Diff.fromString(testing.allocator, "abc", .delete)},
+            .expected = &.{try Diff.fromSlice(testing.allocator, "abc", .delete)},
         },
         .{
             .diffs = testDiffList(&.{
-                try Diff.fromString(testing.allocator, "a", .insert),
-                try Diff.fromString(testing.allocator, "b", .insert),
-                try Diff.fromString(testing.allocator, "c", .insert),
+                try Diff.fromSlice(testing.allocator, "a", .insert),
+                try Diff.fromSlice(testing.allocator, "b", .insert),
+                try Diff.fromSlice(testing.allocator, "c", .insert),
             }),
-            .expected = &.{try Diff.fromString(testing.allocator, "abc", .insert)},
+            .expected = &.{try Diff.fromSlice(testing.allocator, "abc", .insert)},
         },
         .{
             .diffs = testDiffList(&.{
-                try Diff.fromString(testing.allocator, "a", .delete),
-                try Diff.fromString(testing.allocator, "b", .insert),
-                try Diff.fromString(testing.allocator, "c", .delete),
-                try Diff.fromString(testing.allocator, "d", .insert),
-                try Diff.fromString(testing.allocator, "e", .equal),
-                try Diff.fromString(testing.allocator, "f", .equal),
+                try Diff.fromSlice(testing.allocator, "a", .delete),
+                try Diff.fromSlice(testing.allocator, "b", .insert),
+                try Diff.fromSlice(testing.allocator, "c", .delete),
+                try Diff.fromSlice(testing.allocator, "d", .insert),
+                try Diff.fromSlice(testing.allocator, "e", .equal),
+                try Diff.fromSlice(testing.allocator, "f", .equal),
             }),
             .expected = &.{
-                try Diff.fromString(testing.allocator, "ac", .delete),
-                try Diff.fromString(testing.allocator, "bd", .insert),
-                try Diff.fromString(testing.allocator, "ef", .equal),
+                try Diff.fromSlice(testing.allocator, "ac", .delete),
+                try Diff.fromSlice(testing.allocator, "bd", .insert),
+                try Diff.fromSlice(testing.allocator, "ef", .equal),
             },
         },
         .{
             .diffs = testDiffList(&.{
-                try Diff.fromString(testing.allocator, "a", .delete),
-                try Diff.fromString(testing.allocator, "abc", .insert),
-                try Diff.fromString(testing.allocator, "dc", .delete),
+                try Diff.fromSlice(testing.allocator, "a", .delete),
+                try Diff.fromSlice(testing.allocator, "abc", .insert),
+                try Diff.fromSlice(testing.allocator, "dc", .delete),
             }),
             .expected = &.{
-                try Diff.fromString(testing.allocator, "a", .equal),
-                try Diff.fromString(testing.allocator, "d", .delete),
-                try Diff.fromString(testing.allocator, "b", .insert),
-                try Diff.fromString(testing.allocator, "c", .equal),
+                try Diff.fromSlice(testing.allocator, "a", .equal),
+                try Diff.fromSlice(testing.allocator, "d", .delete),
+                try Diff.fromSlice(testing.allocator, "b", .insert),
+                try Diff.fromSlice(testing.allocator, "c", .equal),
             },
         },
         .{
             .diffs = testDiffList(&.{
-                try Diff.fromString(testing.allocator, "x", .equal),
-                try Diff.fromString(testing.allocator, "a", .delete),
-                try Diff.fromString(testing.allocator, "abc", .insert),
-                try Diff.fromString(testing.allocator, "dc", .delete),
-                try Diff.fromString(testing.allocator, "y", .equal),
+                try Diff.fromSlice(testing.allocator, "x", .equal),
+                try Diff.fromSlice(testing.allocator, "a", .delete),
+                try Diff.fromSlice(testing.allocator, "abc", .insert),
+                try Diff.fromSlice(testing.allocator, "dc", .delete),
+                try Diff.fromSlice(testing.allocator, "y", .equal),
             }),
             .expected = &.{
-                try Diff.fromString(testing.allocator, "xa", .equal),
-                try Diff.fromString(testing.allocator, "d", .delete),
-                try Diff.fromString(testing.allocator, "b", .insert),
-                try Diff.fromString(testing.allocator, "cy", .equal),
+                try Diff.fromSlice(testing.allocator, "xa", .equal),
+                try Diff.fromSlice(testing.allocator, "d", .delete),
+                try Diff.fromSlice(testing.allocator, "b", .insert),
+                try Diff.fromSlice(testing.allocator, "cy", .equal),
             },
         },
         .{
             .diffs = testDiffList(&.{
-                try Diff.fromString(testing.allocator, "x", .equal),
-                try Diff.fromString(testing.allocator, "\u{0101}", .delete),
-                try Diff.fromString(testing.allocator, "\u{0101}bc", .insert),
-                try Diff.fromString(testing.allocator, "dc", .delete),
-                try Diff.fromString(testing.allocator, "y", .equal),
+                try Diff.fromSlice(testing.allocator, "x", .equal),
+                try Diff.fromSlice(testing.allocator, "\u{0101}", .delete),
+                try Diff.fromSlice(testing.allocator, "\u{0101}bc", .insert),
+                try Diff.fromSlice(testing.allocator, "dc", .delete),
+                try Diff.fromSlice(testing.allocator, "y", .equal),
             }),
             .expected = &.{
-                try Diff.fromString(testing.allocator, "x\u{0101}", .equal),
-                try Diff.fromString(testing.allocator, "d", .delete),
-                try Diff.fromString(testing.allocator, "b", .insert),
-                try Diff.fromString(testing.allocator, "cy", .equal),
+                try Diff.fromSlice(testing.allocator, "x\u{0101}", .equal),
+                try Diff.fromSlice(testing.allocator, "d", .delete),
+                try Diff.fromSlice(testing.allocator, "b", .insert),
+                try Diff.fromSlice(testing.allocator, "cy", .equal),
             },
         },
         .{
             .diffs = testDiffList(&.{
-                try Diff.fromString(testing.allocator, "a", .equal),
-                try Diff.fromString(testing.allocator, "ba", .insert),
-                try Diff.fromString(testing.allocator, "c", .equal),
+                try Diff.fromSlice(testing.allocator, "a", .equal),
+                try Diff.fromSlice(testing.allocator, "ba", .insert),
+                try Diff.fromSlice(testing.allocator, "c", .equal),
             }),
             .expected = &.{
-                try Diff.fromString(testing.allocator, "ab", .insert),
-                try Diff.fromString(testing.allocator, "ac", .equal),
+                try Diff.fromSlice(testing.allocator, "ab", .insert),
+                try Diff.fromSlice(testing.allocator, "ac", .equal),
             },
         },
         .{
             .diffs = testDiffList(&.{
-                try Diff.fromString(testing.allocator, "c", .equal),
-                try Diff.fromString(testing.allocator, "ab", .insert),
-                try Diff.fromString(testing.allocator, "a", .equal),
+                try Diff.fromSlice(testing.allocator, "c", .equal),
+                try Diff.fromSlice(testing.allocator, "ab", .insert),
+                try Diff.fromSlice(testing.allocator, "a", .equal),
             }),
             .expected = &.{
-                try Diff.fromString(testing.allocator, "ca", .equal),
-                try Diff.fromString(testing.allocator, "ba", .insert),
+                try Diff.fromSlice(testing.allocator, "ca", .equal),
+                try Diff.fromSlice(testing.allocator, "ba", .insert),
             },
         },
         .{
             .diffs = testDiffList(&.{
-                try Diff.fromString(testing.allocator, "a", .equal),
-                try Diff.fromString(testing.allocator, "b", .delete),
-                try Diff.fromString(testing.allocator, "c", .equal),
-                try Diff.fromString(testing.allocator, "ac", .delete),
-                try Diff.fromString(testing.allocator, "x", .equal),
+                try Diff.fromSlice(testing.allocator, "a", .equal),
+                try Diff.fromSlice(testing.allocator, "b", .delete),
+                try Diff.fromSlice(testing.allocator, "c", .equal),
+                try Diff.fromSlice(testing.allocator, "ac", .delete),
+                try Diff.fromSlice(testing.allocator, "x", .equal),
             }),
             .expected = &.{
-                try Diff.fromString(testing.allocator, "abc", .delete),
-                try Diff.fromString(testing.allocator, "acx", .equal),
+                try Diff.fromSlice(testing.allocator, "abc", .delete),
+                try Diff.fromSlice(testing.allocator, "acx", .equal),
             },
         },
         .{
             .diffs = testDiffList(&.{
-                try Diff.fromString(testing.allocator, "x", .equal),
-                try Diff.fromString(testing.allocator, "ca", .delete),
-                try Diff.fromString(testing.allocator, "c", .equal),
-                try Diff.fromString(testing.allocator, "b", .delete),
-                try Diff.fromString(testing.allocator, "a", .equal),
+                try Diff.fromSlice(testing.allocator, "x", .equal),
+                try Diff.fromSlice(testing.allocator, "ca", .delete),
+                try Diff.fromSlice(testing.allocator, "c", .equal),
+                try Diff.fromSlice(testing.allocator, "b", .delete),
+                try Diff.fromSlice(testing.allocator, "a", .equal),
             }),
             .expected = &.{
-                try Diff.fromString(testing.allocator, "xca", .equal),
-                try Diff.fromString(testing.allocator, "cba", .delete),
+                try Diff.fromSlice(testing.allocator, "xca", .equal),
+                try Diff.fromSlice(testing.allocator, "cba", .delete),
             },
         },
     };
@@ -508,108 +508,108 @@ test "cleanup semantic lossless" {
         },
         .{
             .diffs = testDiffList(&.{
-                try Diff.fromString(testing.allocator, "AAA\r\n\r\nBBB", .equal),
-                try Diff.fromString(testing.allocator, "\r\nDDD\r\n\r\nBBB", .insert),
-                try Diff.fromString(testing.allocator, "\r\nEEE", .equal),
+                try Diff.fromSlice(testing.allocator, "AAA\r\n\r\nBBB", .equal),
+                try Diff.fromSlice(testing.allocator, "\r\nDDD\r\n\r\nBBB", .insert),
+                try Diff.fromSlice(testing.allocator, "\r\nEEE", .equal),
             }),
             .expected = &.{
-                try Diff.fromString(testing.allocator, "AAA\r\n\r\n", .equal),
-                try Diff.fromString(testing.allocator, "BBB\r\nDDD\r\n\r\n", .insert),
-                try Diff.fromString(testing.allocator, "BBB\r\nEEE", .equal),
+                try Diff.fromSlice(testing.allocator, "AAA\r\n\r\n", .equal),
+                try Diff.fromSlice(testing.allocator, "BBB\r\nDDD\r\n\r\n", .insert),
+                try Diff.fromSlice(testing.allocator, "BBB\r\nEEE", .equal),
             },
         },
         .{
             .diffs = testDiffList(&.{
-                try Diff.fromString(testing.allocator, "AAA\r\nBBB", .equal),
-                try Diff.fromString(testing.allocator, " DDD\r\nBBB", .insert),
-                try Diff.fromString(testing.allocator, " EEE", .equal),
+                try Diff.fromSlice(testing.allocator, "AAA\r\nBBB", .equal),
+                try Diff.fromSlice(testing.allocator, " DDD\r\nBBB", .insert),
+                try Diff.fromSlice(testing.allocator, " EEE", .equal),
             }),
             .expected = &.{
-                try Diff.fromString(testing.allocator, "AAA\r\n", .equal),
-                try Diff.fromString(testing.allocator, "BBB DDD\r\n", .insert),
-                try Diff.fromString(testing.allocator, "BBB EEE", .equal),
+                try Diff.fromSlice(testing.allocator, "AAA\r\n", .equal),
+                try Diff.fromSlice(testing.allocator, "BBB DDD\r\n", .insert),
+                try Diff.fromSlice(testing.allocator, "BBB EEE", .equal),
             },
         },
         .{
             .diffs = testDiffList(&.{
-                try Diff.fromString(testing.allocator, "The c", .equal),
-                try Diff.fromString(testing.allocator, "ow and the c", .insert),
-                try Diff.fromString(testing.allocator, "at.", .equal),
+                try Diff.fromSlice(testing.allocator, "The c", .equal),
+                try Diff.fromSlice(testing.allocator, "ow and the c", .insert),
+                try Diff.fromSlice(testing.allocator, "at.", .equal),
             }),
             .expected = &.{
-                try Diff.fromString(testing.allocator, "The ", .equal),
-                try Diff.fromString(testing.allocator, "cow and the ", .insert),
-                try Diff.fromString(testing.allocator, "cat.", .equal),
+                try Diff.fromSlice(testing.allocator, "The ", .equal),
+                try Diff.fromSlice(testing.allocator, "cow and the ", .insert),
+                try Diff.fromSlice(testing.allocator, "cat.", .equal),
             },
         },
         .{
             .diffs = testDiffList(&.{
-                try Diff.fromString(testing.allocator, "The-c", .equal),
-                try Diff.fromString(testing.allocator, "ow-and-the-c", .insert),
-                try Diff.fromString(testing.allocator, "at.", .equal),
+                try Diff.fromSlice(testing.allocator, "The-c", .equal),
+                try Diff.fromSlice(testing.allocator, "ow-and-the-c", .insert),
+                try Diff.fromSlice(testing.allocator, "at.", .equal),
             }),
             .expected = &.{
-                try Diff.fromString(testing.allocator, "The-", .equal),
-                try Diff.fromString(testing.allocator, "cow-and-the-", .insert),
-                try Diff.fromString(testing.allocator, "cat.", .equal),
+                try Diff.fromSlice(testing.allocator, "The-", .equal),
+                try Diff.fromSlice(testing.allocator, "cow-and-the-", .insert),
+                try Diff.fromSlice(testing.allocator, "cat.", .equal),
             },
         },
         .{
             .diffs = testDiffList(&.{
-                try Diff.fromString(testing.allocator, "a", .equal),
-                try Diff.fromString(testing.allocator, "a", .delete),
-                try Diff.fromString(testing.allocator, "ax", .equal),
+                try Diff.fromSlice(testing.allocator, "a", .equal),
+                try Diff.fromSlice(testing.allocator, "a", .delete),
+                try Diff.fromSlice(testing.allocator, "ax", .equal),
             }),
             .expected = &.{
-                try Diff.fromString(testing.allocator, "a", .delete),
-                try Diff.fromString(testing.allocator, "aax", .equal),
+                try Diff.fromSlice(testing.allocator, "a", .delete),
+                try Diff.fromSlice(testing.allocator, "aax", .equal),
             },
         },
         .{
             .diffs = testDiffList(&.{
-                try Diff.fromString(testing.allocator, "xa", .equal),
-                try Diff.fromString(testing.allocator, "a", .delete),
-                try Diff.fromString(testing.allocator, "a", .equal),
+                try Diff.fromSlice(testing.allocator, "xa", .equal),
+                try Diff.fromSlice(testing.allocator, "a", .delete),
+                try Diff.fromSlice(testing.allocator, "a", .equal),
             }),
             .expected = &.{
-                try Diff.fromString(testing.allocator, "xaa", .equal),
-                try Diff.fromString(testing.allocator, "a", .delete),
+                try Diff.fromSlice(testing.allocator, "xaa", .equal),
+                try Diff.fromSlice(testing.allocator, "a", .delete),
             },
         },
         .{
             .diffs = testDiffList(&.{
-                try Diff.fromString(testing.allocator, "The xxx. The ", .equal),
-                try Diff.fromString(testing.allocator, "zzz. The ", .insert),
-                try Diff.fromString(testing.allocator, "yyy.", .equal),
+                try Diff.fromSlice(testing.allocator, "The xxx. The ", .equal),
+                try Diff.fromSlice(testing.allocator, "zzz. The ", .insert),
+                try Diff.fromSlice(testing.allocator, "yyy.", .equal),
             }),
             .expected = &.{
-                try Diff.fromString(testing.allocator, "The xxx.", .equal),
-                try Diff.fromString(testing.allocator, " The zzz.", .insert),
-                try Diff.fromString(testing.allocator, " The yyy.", .equal),
+                try Diff.fromSlice(testing.allocator, "The xxx.", .equal),
+                try Diff.fromSlice(testing.allocator, " The zzz.", .insert),
+                try Diff.fromSlice(testing.allocator, " The yyy.", .equal),
             },
         },
         .{
             .diffs = testDiffList(&.{
-                try Diff.fromString(testing.allocator, "The ♕. The ", .equal),
-                try Diff.fromString(testing.allocator, "♔. The ", .insert),
-                try Diff.fromString(testing.allocator, "♖.", .equal),
+                try Diff.fromSlice(testing.allocator, "The ♕. The ", .equal),
+                try Diff.fromSlice(testing.allocator, "♔. The ", .insert),
+                try Diff.fromSlice(testing.allocator, "♖.", .equal),
             }),
             .expected = &.{
-                try Diff.fromString(testing.allocator, "The ♕.", .equal),
-                try Diff.fromString(testing.allocator, " The ♔.", .insert),
-                try Diff.fromString(testing.allocator, " The ♖.", .equal),
+                try Diff.fromSlice(testing.allocator, "The ♕.", .equal),
+                try Diff.fromSlice(testing.allocator, " The ♔.", .insert),
+                try Diff.fromSlice(testing.allocator, " The ♖.", .equal),
             },
         },
         .{
             .diffs = testDiffList(&.{
-                try Diff.fromString(testing.allocator, "♕♕", .equal),
-                try Diff.fromString(testing.allocator, "♔♔", .insert),
-                try Diff.fromString(testing.allocator, "♖♖", .equal),
+                try Diff.fromSlice(testing.allocator, "♕♕", .equal),
+                try Diff.fromSlice(testing.allocator, "♔♔", .insert),
+                try Diff.fromSlice(testing.allocator, "♖♖", .equal),
             }),
             .expected = &.{
-                try Diff.fromString(testing.allocator, "♕♕", .equal),
-                try Diff.fromString(testing.allocator, "♔♔", .insert),
-                try Diff.fromString(testing.allocator, "♖♖", .equal),
+                try Diff.fromSlice(testing.allocator, "♕♕", .equal),
+                try Diff.fromSlice(testing.allocator, "♔♔", .insert),
+                try Diff.fromSlice(testing.allocator, "♖♖", .equal),
             },
         },
     };
@@ -656,221 +656,221 @@ test "cleanup semantic" {
         },
         .{
             .diffs = testDiffList(&.{
-                try Diff.fromString(testing.allocator, "ab", .delete),
-                try Diff.fromString(testing.allocator, "cd", .insert),
-                try Diff.fromString(testing.allocator, "12", .equal),
-                try Diff.fromString(testing.allocator, "e", .delete),
+                try Diff.fromSlice(testing.allocator, "ab", .delete),
+                try Diff.fromSlice(testing.allocator, "cd", .insert),
+                try Diff.fromSlice(testing.allocator, "12", .equal),
+                try Diff.fromSlice(testing.allocator, "e", .delete),
             }),
             .expected = &.{
-                try Diff.fromString(testing.allocator, "ab", .delete),
-                try Diff.fromString(testing.allocator, "cd", .insert),
-                try Diff.fromString(testing.allocator, "12", .equal),
-                try Diff.fromString(testing.allocator, "e", .delete),
+                try Diff.fromSlice(testing.allocator, "ab", .delete),
+                try Diff.fromSlice(testing.allocator, "cd", .insert),
+                try Diff.fromSlice(testing.allocator, "12", .equal),
+                try Diff.fromSlice(testing.allocator, "e", .delete),
             },
         },
         .{
             .diffs = testDiffList(&.{
-                try Diff.fromString(testing.allocator, "abc", .delete),
-                try Diff.fromString(testing.allocator, "ABC", .insert),
-                try Diff.fromString(testing.allocator, "1234", .equal),
-                try Diff.fromString(testing.allocator, "wxyz", .delete),
+                try Diff.fromSlice(testing.allocator, "abc", .delete),
+                try Diff.fromSlice(testing.allocator, "ABC", .insert),
+                try Diff.fromSlice(testing.allocator, "1234", .equal),
+                try Diff.fromSlice(testing.allocator, "wxyz", .delete),
             }),
             .expected = &.{
-                try Diff.fromString(testing.allocator, "abc", .delete),
-                try Diff.fromString(testing.allocator, "ABC", .insert),
-                try Diff.fromString(testing.allocator, "1234", .equal),
-                try Diff.fromString(testing.allocator, "wxyz", .delete),
+                try Diff.fromSlice(testing.allocator, "abc", .delete),
+                try Diff.fromSlice(testing.allocator, "ABC", .insert),
+                try Diff.fromSlice(testing.allocator, "1234", .equal),
+                try Diff.fromSlice(testing.allocator, "wxyz", .delete),
             },
         },
         .{
             .diffs = testDiffList(&.{
-                try Diff.fromString(testing.allocator, "2016-09-01T03:07:1", .equal),
-                try Diff.fromString(testing.allocator, "5.15", .insert),
-                try Diff.fromString(testing.allocator, "4", .equal),
-                try Diff.fromString(testing.allocator, ".", .delete),
-                try Diff.fromString(testing.allocator, "80", .equal),
-                try Diff.fromString(testing.allocator, "0", .insert),
-                try Diff.fromString(testing.allocator, "78", .equal),
-                try Diff.fromString(testing.allocator, "3074", .delete),
-                try Diff.fromString(testing.allocator, "1Z", .equal),
+                try Diff.fromSlice(testing.allocator, "2016-09-01T03:07:1", .equal),
+                try Diff.fromSlice(testing.allocator, "5.15", .insert),
+                try Diff.fromSlice(testing.allocator, "4", .equal),
+                try Diff.fromSlice(testing.allocator, ".", .delete),
+                try Diff.fromSlice(testing.allocator, "80", .equal),
+                try Diff.fromSlice(testing.allocator, "0", .insert),
+                try Diff.fromSlice(testing.allocator, "78", .equal),
+                try Diff.fromSlice(testing.allocator, "3074", .delete),
+                try Diff.fromSlice(testing.allocator, "1Z", .equal),
             }),
             .expected = &.{
-                try Diff.fromString(testing.allocator, "2016-09-01T03:07:1", .equal),
-                try Diff.fromString(testing.allocator, "5.15", .insert),
-                try Diff.fromString(testing.allocator, "4", .equal),
-                try Diff.fromString(testing.allocator, ".", .delete),
-                try Diff.fromString(testing.allocator, "80", .equal),
-                try Diff.fromString(testing.allocator, "0", .insert),
-                try Diff.fromString(testing.allocator, "78", .equal),
-                try Diff.fromString(testing.allocator, "3074", .delete),
-                try Diff.fromString(testing.allocator, "1Z", .equal),
+                try Diff.fromSlice(testing.allocator, "2016-09-01T03:07:1", .equal),
+                try Diff.fromSlice(testing.allocator, "5.15", .insert),
+                try Diff.fromSlice(testing.allocator, "4", .equal),
+                try Diff.fromSlice(testing.allocator, ".", .delete),
+                try Diff.fromSlice(testing.allocator, "80", .equal),
+                try Diff.fromSlice(testing.allocator, "0", .insert),
+                try Diff.fromSlice(testing.allocator, "78", .equal),
+                try Diff.fromSlice(testing.allocator, "3074", .delete),
+                try Diff.fromSlice(testing.allocator, "1Z", .equal),
             },
         },
         .{
             .diffs = testDiffList(&.{
-                try Diff.fromString(testing.allocator, "a", .delete),
-                try Diff.fromString(testing.allocator, "b", .equal),
-                try Diff.fromString(testing.allocator, "c", .delete),
+                try Diff.fromSlice(testing.allocator, "a", .delete),
+                try Diff.fromSlice(testing.allocator, "b", .equal),
+                try Diff.fromSlice(testing.allocator, "c", .delete),
             }),
             .expected = &.{
-                try Diff.fromString(testing.allocator, "abc", .delete),
-                try Diff.fromString(testing.allocator, "b", .insert),
+                try Diff.fromSlice(testing.allocator, "abc", .delete),
+                try Diff.fromSlice(testing.allocator, "b", .insert),
             },
         },
         .{
             .diffs = testDiffList(&.{
-                try Diff.fromString(testing.allocator, "ab", .delete),
-                try Diff.fromString(testing.allocator, "cd", .equal),
-                try Diff.fromString(testing.allocator, "e", .delete),
-                try Diff.fromString(testing.allocator, "f", .equal),
-                try Diff.fromString(testing.allocator, "g", .insert),
+                try Diff.fromSlice(testing.allocator, "ab", .delete),
+                try Diff.fromSlice(testing.allocator, "cd", .equal),
+                try Diff.fromSlice(testing.allocator, "e", .delete),
+                try Diff.fromSlice(testing.allocator, "f", .equal),
+                try Diff.fromSlice(testing.allocator, "g", .insert),
             }),
             .expected = &.{
-                try Diff.fromString(testing.allocator, "abcdef", .delete),
-                try Diff.fromString(testing.allocator, "cdfg", .insert),
+                try Diff.fromSlice(testing.allocator, "abcdef", .delete),
+                try Diff.fromSlice(testing.allocator, "cdfg", .insert),
             },
         },
         .{
             .diffs = testDiffList(&.{
-                try Diff.fromString(testing.allocator, "1", .insert),
-                try Diff.fromString(testing.allocator, "A", .equal),
-                try Diff.fromString(testing.allocator, "B", .delete),
-                try Diff.fromString(testing.allocator, "2", .insert),
-                try Diff.fromString(testing.allocator, "_", .equal),
-                try Diff.fromString(testing.allocator, "1", .insert),
-                try Diff.fromString(testing.allocator, "A", .equal),
-                try Diff.fromString(testing.allocator, "B", .delete),
-                try Diff.fromString(testing.allocator, "2", .insert),
+                try Diff.fromSlice(testing.allocator, "1", .insert),
+                try Diff.fromSlice(testing.allocator, "A", .equal),
+                try Diff.fromSlice(testing.allocator, "B", .delete),
+                try Diff.fromSlice(testing.allocator, "2", .insert),
+                try Diff.fromSlice(testing.allocator, "_", .equal),
+                try Diff.fromSlice(testing.allocator, "1", .insert),
+                try Diff.fromSlice(testing.allocator, "A", .equal),
+                try Diff.fromSlice(testing.allocator, "B", .delete),
+                try Diff.fromSlice(testing.allocator, "2", .insert),
             }),
             .expected = &.{
-                try Diff.fromString(testing.allocator, "AB_AB", .delete),
-                try Diff.fromString(testing.allocator, "1A2_1A2", .insert),
+                try Diff.fromSlice(testing.allocator, "AB_AB", .delete),
+                try Diff.fromSlice(testing.allocator, "1A2_1A2", .insert),
             },
         },
         .{
             .diffs = testDiffList(&.{
-                try Diff.fromString(testing.allocator, "The c", .equal),
-                try Diff.fromString(testing.allocator, "ow and the c", .delete),
-                try Diff.fromString(testing.allocator, "at.", .equal),
+                try Diff.fromSlice(testing.allocator, "The c", .equal),
+                try Diff.fromSlice(testing.allocator, "ow and the c", .delete),
+                try Diff.fromSlice(testing.allocator, "at.", .equal),
             }),
             .expected = &.{
-                try Diff.fromString(testing.allocator, "The ", .equal),
-                try Diff.fromString(testing.allocator, "cow and the ", .delete),
-                try Diff.fromString(testing.allocator, "cat.", .equal),
+                try Diff.fromSlice(testing.allocator, "The ", .equal),
+                try Diff.fromSlice(testing.allocator, "cow and the ", .delete),
+                try Diff.fromSlice(testing.allocator, "cat.", .equal),
             },
         },
         .{
             .diffs = testDiffList(&.{
-                try Diff.fromString(testing.allocator, "abcxx", .delete),
-                try Diff.fromString(testing.allocator, "xxdef", .insert),
+                try Diff.fromSlice(testing.allocator, "abcxx", .delete),
+                try Diff.fromSlice(testing.allocator, "xxdef", .insert),
             }),
             .expected = &.{
-                try Diff.fromString(testing.allocator, "abcxx", .delete),
-                try Diff.fromString(testing.allocator, "xxdef", .insert),
+                try Diff.fromSlice(testing.allocator, "abcxx", .delete),
+                try Diff.fromSlice(testing.allocator, "xxdef", .insert),
             },
         },
         .{
             .diffs = testDiffList(&.{
-                try Diff.fromString(testing.allocator, "abcxxx", .delete),
-                try Diff.fromString(testing.allocator, "xxxdef", .insert),
+                try Diff.fromSlice(testing.allocator, "abcxxx", .delete),
+                try Diff.fromSlice(testing.allocator, "xxxdef", .insert),
             }),
             .expected = &.{
-                try Diff.fromString(testing.allocator, "abc", .delete),
-                try Diff.fromString(testing.allocator, "xxx", .equal),
-                try Diff.fromString(testing.allocator, "def", .insert),
+                try Diff.fromSlice(testing.allocator, "abc", .delete),
+                try Diff.fromSlice(testing.allocator, "xxx", .equal),
+                try Diff.fromSlice(testing.allocator, "def", .insert),
             },
         },
         .{
             .diffs = testDiffList(&.{
-                try Diff.fromString(testing.allocator, "xxxabc", .delete),
-                try Diff.fromString(testing.allocator, "defxxx", .insert),
+                try Diff.fromSlice(testing.allocator, "xxxabc", .delete),
+                try Diff.fromSlice(testing.allocator, "defxxx", .insert),
             }),
             .expected = &.{
-                try Diff.fromString(testing.allocator, "def", .insert),
-                try Diff.fromString(testing.allocator, "xxx", .equal),
-                try Diff.fromString(testing.allocator, "abc", .delete),
+                try Diff.fromSlice(testing.allocator, "def", .insert),
+                try Diff.fromSlice(testing.allocator, "xxx", .equal),
+                try Diff.fromSlice(testing.allocator, "abc", .delete),
             },
         },
         .{
             .diffs = testDiffList(&.{
-                try Diff.fromString(testing.allocator, "abcd1212", .delete),
-                try Diff.fromString(testing.allocator, "1212efghi", .insert),
-                try Diff.fromString(testing.allocator, "----", .equal),
-                try Diff.fromString(testing.allocator, "A3", .delete),
-                try Diff.fromString(testing.allocator, "3BC", .insert),
+                try Diff.fromSlice(testing.allocator, "abcd1212", .delete),
+                try Diff.fromSlice(testing.allocator, "1212efghi", .insert),
+                try Diff.fromSlice(testing.allocator, "----", .equal),
+                try Diff.fromSlice(testing.allocator, "A3", .delete),
+                try Diff.fromSlice(testing.allocator, "3BC", .insert),
             }),
             .expected = &.{
-                try Diff.fromString(testing.allocator, "abcd", .delete),
-                try Diff.fromString(testing.allocator, "1212", .equal),
-                try Diff.fromString(testing.allocator, "efghi", .insert),
-                try Diff.fromString(testing.allocator, "----", .equal),
-                try Diff.fromString(testing.allocator, "A", .delete),
-                try Diff.fromString(testing.allocator, "3", .equal),
-                try Diff.fromString(testing.allocator, "BC", .insert),
+                try Diff.fromSlice(testing.allocator, "abcd", .delete),
+                try Diff.fromSlice(testing.allocator, "1212", .equal),
+                try Diff.fromSlice(testing.allocator, "efghi", .insert),
+                try Diff.fromSlice(testing.allocator, "----", .equal),
+                try Diff.fromSlice(testing.allocator, "A", .delete),
+                try Diff.fromSlice(testing.allocator, "3", .equal),
+                try Diff.fromSlice(testing.allocator, "BC", .insert),
             },
         },
         .{
             .diffs = testDiffList(&.{
-                try Diff.fromString(testing.allocator, "James McCarthy ", .equal),
-                try Diff.fromString(testing.allocator, "close to ", .delete),
-                try Diff.fromString(testing.allocator, "sign", .equal),
-                try Diff.fromString(testing.allocator, "ing", .delete),
-                try Diff.fromString(testing.allocator, "s", .insert),
-                try Diff.fromString(testing.allocator, " new ", .equal),
-                try Diff.fromString(testing.allocator, "E", .delete),
-                try Diff.fromString(testing.allocator, "fi", .insert),
-                try Diff.fromString(testing.allocator, "ve", .equal),
-                try Diff.fromString(testing.allocator, "-yea", .insert),
-                try Diff.fromString(testing.allocator, "r", .equal),
-                try Diff.fromString(testing.allocator, "ton", .delete),
-                try Diff.fromString(testing.allocator, " deal", .equal),
-                try Diff.fromString(testing.allocator, " at Everton", .insert),
+                try Diff.fromSlice(testing.allocator, "James McCarthy ", .equal),
+                try Diff.fromSlice(testing.allocator, "close to ", .delete),
+                try Diff.fromSlice(testing.allocator, "sign", .equal),
+                try Diff.fromSlice(testing.allocator, "ing", .delete),
+                try Diff.fromSlice(testing.allocator, "s", .insert),
+                try Diff.fromSlice(testing.allocator, " new ", .equal),
+                try Diff.fromSlice(testing.allocator, "E", .delete),
+                try Diff.fromSlice(testing.allocator, "fi", .insert),
+                try Diff.fromSlice(testing.allocator, "ve", .equal),
+                try Diff.fromSlice(testing.allocator, "-yea", .insert),
+                try Diff.fromSlice(testing.allocator, "r", .equal),
+                try Diff.fromSlice(testing.allocator, "ton", .delete),
+                try Diff.fromSlice(testing.allocator, " deal", .equal),
+                try Diff.fromSlice(testing.allocator, " at Everton", .insert),
             }),
             .expected = &.{
-                try Diff.fromString(testing.allocator, "James McCarthy ", .equal),
-                try Diff.fromString(testing.allocator, "close to ", .delete),
-                try Diff.fromString(testing.allocator, "sign", .equal),
-                try Diff.fromString(testing.allocator, "ing", .delete),
-                try Diff.fromString(testing.allocator, "s", .insert),
-                try Diff.fromString(testing.allocator, " new ", .equal),
-                try Diff.fromString(testing.allocator, "five-year deal at ", .insert),
-                try Diff.fromString(testing.allocator, "Everton", .equal),
-                try Diff.fromString(testing.allocator, " deal", .delete),
+                try Diff.fromSlice(testing.allocator, "James McCarthy ", .equal),
+                try Diff.fromSlice(testing.allocator, "close to ", .delete),
+                try Diff.fromSlice(testing.allocator, "sign", .equal),
+                try Diff.fromSlice(testing.allocator, "ing", .delete),
+                try Diff.fromSlice(testing.allocator, "s", .insert),
+                try Diff.fromSlice(testing.allocator, " new ", .equal),
+                try Diff.fromSlice(testing.allocator, "five-year deal at ", .insert),
+                try Diff.fromSlice(testing.allocator, "Everton", .equal),
+                try Diff.fromSlice(testing.allocator, " deal", .delete),
             },
         },
         .{
             .diffs = testDiffList(&.{
-                try Diff.fromString(testing.allocator, "星球大戰：新的希望 ", .insert),
-                try Diff.fromString(testing.allocator, "star wars: ", .equal),
-                try Diff.fromString(testing.allocator, "episodio iv - un", .delete),
-                try Diff.fromString(testing.allocator, "a n", .equal),
-                try Diff.fromString(testing.allocator, "u", .delete),
-                try Diff.fromString(testing.allocator, "e", .equal),
-                try Diff.fromString(testing.allocator, "va", .delete),
-                try Diff.fromString(testing.allocator, "w", .insert),
-                try Diff.fromString(testing.allocator, " ", .equal),
-                try Diff.fromString(testing.allocator, "es", .delete),
-                try Diff.fromString(testing.allocator, "ho", .insert),
-                try Diff.fromString(testing.allocator, "pe", .equal),
-                try Diff.fromString(testing.allocator, "ranza", .delete),
+                try Diff.fromSlice(testing.allocator, "星球大戰：新的希望 ", .insert),
+                try Diff.fromSlice(testing.allocator, "star wars: ", .equal),
+                try Diff.fromSlice(testing.allocator, "episodio iv - un", .delete),
+                try Diff.fromSlice(testing.allocator, "a n", .equal),
+                try Diff.fromSlice(testing.allocator, "u", .delete),
+                try Diff.fromSlice(testing.allocator, "e", .equal),
+                try Diff.fromSlice(testing.allocator, "va", .delete),
+                try Diff.fromSlice(testing.allocator, "w", .insert),
+                try Diff.fromSlice(testing.allocator, " ", .equal),
+                try Diff.fromSlice(testing.allocator, "es", .delete),
+                try Diff.fromSlice(testing.allocator, "ho", .insert),
+                try Diff.fromSlice(testing.allocator, "pe", .equal),
+                try Diff.fromSlice(testing.allocator, "ranza", .delete),
             }),
             .expected = &.{
-                try Diff.fromString(testing.allocator, "星球大戰：新的希望 ", .insert),
-                try Diff.fromString(testing.allocator, "star wars: ", .equal),
-                try Diff.fromString(testing.allocator, "episodio iv - una nueva esperanza", .delete),
-                try Diff.fromString(testing.allocator, "a new hope", .insert),
+                try Diff.fromSlice(testing.allocator, "星球大戰：新的希望 ", .insert),
+                try Diff.fromSlice(testing.allocator, "star wars: ", .equal),
+                try Diff.fromSlice(testing.allocator, "episodio iv - una nueva esperanza", .delete),
+                try Diff.fromSlice(testing.allocator, "a new hope", .insert),
             },
         },
         .{
             .diffs = testDiffList(&.{
-                try Diff.fromString(testing.allocator, "킬러 인 ", .insert),
-                try Diff.fromString(testing.allocator, "리커버리", .equal),
-                try Diff.fromString(testing.allocator, " 보이즈", .delete),
+                try Diff.fromSlice(testing.allocator, "킬러 인 ", .insert),
+                try Diff.fromSlice(testing.allocator, "리커버리", .equal),
+                try Diff.fromSlice(testing.allocator, " 보이즈", .delete),
             }),
             .expected = &.{
-                try Diff.fromString(testing.allocator, "킬러 인 ", .insert),
-                try Diff.fromString(testing.allocator, "리커버리", .equal),
-                try Diff.fromString(testing.allocator, " 보이즈", .delete),
+                try Diff.fromSlice(testing.allocator, "킬러 인 ", .insert),
+                try Diff.fromSlice(testing.allocator, "리커버리", .equal),
+                try Diff.fromSlice(testing.allocator, " 보이즈", .delete),
             },
         },
     };
@@ -930,58 +930,58 @@ test "cleanup efficiency" {
             },
             .{
                 .diffs = testDiffList(&.{
-                    try Diff.fromString(testing.allocator, "ab", .delete),
-                    try Diff.fromString(testing.allocator, "12", .insert),
-                    try Diff.fromString(testing.allocator, "wxyz", .equal),
-                    try Diff.fromString(testing.allocator, "cd", .delete),
-                    try Diff.fromString(testing.allocator, "34", .insert),
+                    try Diff.fromSlice(testing.allocator, "ab", .delete),
+                    try Diff.fromSlice(testing.allocator, "12", .insert),
+                    try Diff.fromSlice(testing.allocator, "wxyz", .equal),
+                    try Diff.fromSlice(testing.allocator, "cd", .delete),
+                    try Diff.fromSlice(testing.allocator, "34", .insert),
                 }),
                 .expected = &.{
-                    try Diff.fromString(testing.allocator, "ab", .delete),
-                    try Diff.fromString(testing.allocator, "12", .insert),
-                    try Diff.fromString(testing.allocator, "wxyz", .equal),
-                    try Diff.fromString(testing.allocator, "cd", .delete),
-                    try Diff.fromString(testing.allocator, "34", .insert),
+                    try Diff.fromSlice(testing.allocator, "ab", .delete),
+                    try Diff.fromSlice(testing.allocator, "12", .insert),
+                    try Diff.fromSlice(testing.allocator, "wxyz", .equal),
+                    try Diff.fromSlice(testing.allocator, "cd", .delete),
+                    try Diff.fromSlice(testing.allocator, "34", .insert),
                 },
             },
             .{
                 .diffs = testDiffList(&.{
-                    try Diff.fromString(testing.allocator, "ab", .delete),
-                    try Diff.fromString(testing.allocator, "12", .insert),
-                    try Diff.fromString(testing.allocator, "xyz", .equal),
-                    try Diff.fromString(testing.allocator, "cd", .delete),
-                    try Diff.fromString(testing.allocator, "34", .insert),
+                    try Diff.fromSlice(testing.allocator, "ab", .delete),
+                    try Diff.fromSlice(testing.allocator, "12", .insert),
+                    try Diff.fromSlice(testing.allocator, "xyz", .equal),
+                    try Diff.fromSlice(testing.allocator, "cd", .delete),
+                    try Diff.fromSlice(testing.allocator, "34", .insert),
                 }),
                 .expected = &.{
-                    try Diff.fromString(testing.allocator, "abxyzcd", .delete),
-                    try Diff.fromString(testing.allocator, "12xyz34", .insert),
+                    try Diff.fromSlice(testing.allocator, "abxyzcd", .delete),
+                    try Diff.fromSlice(testing.allocator, "12xyz34", .insert),
                 },
             },
             .{
                 .diffs = testDiffList(&.{
-                    try Diff.fromString(testing.allocator, "12", .insert),
-                    try Diff.fromString(testing.allocator, "x", .equal),
-                    try Diff.fromString(testing.allocator, "cd", .delete),
-                    try Diff.fromString(testing.allocator, "34", .insert),
+                    try Diff.fromSlice(testing.allocator, "12", .insert),
+                    try Diff.fromSlice(testing.allocator, "x", .equal),
+                    try Diff.fromSlice(testing.allocator, "cd", .delete),
+                    try Diff.fromSlice(testing.allocator, "34", .insert),
                 }),
                 .expected = &.{
-                    try Diff.fromString(testing.allocator, "xcd", .delete),
-                    try Diff.fromString(testing.allocator, "12x34", .insert),
+                    try Diff.fromSlice(testing.allocator, "xcd", .delete),
+                    try Diff.fromSlice(testing.allocator, "12x34", .insert),
                 },
             },
             .{
                 .diffs = testDiffList(&.{
-                    try Diff.fromString(testing.allocator, "ab", .delete),
-                    try Diff.fromString(testing.allocator, "12", .insert),
-                    try Diff.fromString(testing.allocator, "xy", .equal),
-                    try Diff.fromString(testing.allocator, "34", .insert),
-                    try Diff.fromString(testing.allocator, "z", .equal),
-                    try Diff.fromString(testing.allocator, "cd", .delete),
-                    try Diff.fromString(testing.allocator, "56", .insert),
+                    try Diff.fromSlice(testing.allocator, "ab", .delete),
+                    try Diff.fromSlice(testing.allocator, "12", .insert),
+                    try Diff.fromSlice(testing.allocator, "xy", .equal),
+                    try Diff.fromSlice(testing.allocator, "34", .insert),
+                    try Diff.fromSlice(testing.allocator, "z", .equal),
+                    try Diff.fromSlice(testing.allocator, "cd", .delete),
+                    try Diff.fromSlice(testing.allocator, "56", .insert),
                 }),
                 .expected = &.{
-                    try Diff.fromString(testing.allocator, "abxyzcd", .delete),
-                    try Diff.fromString(testing.allocator, "12xy34z56", .insert),
+                    try Diff.fromSlice(testing.allocator, "abxyzcd", .delete),
+                    try Diff.fromSlice(testing.allocator, "12xy34z56", .insert),
                 },
             },
         };
@@ -1029,15 +1029,15 @@ test "cleanup efficiency" {
         const test_cases = [_]TestCase{
             .{
                 .diffs = testDiffList(&.{
-                    try Diff.fromString(testing.allocator, "ab", .delete),
-                    try Diff.fromString(testing.allocator, "12", .insert),
-                    try Diff.fromString(testing.allocator, "wxyz", .equal),
-                    try Diff.fromString(testing.allocator, "cd", .delete),
-                    try Diff.fromString(testing.allocator, "34", .insert),
+                    try Diff.fromSlice(testing.allocator, "ab", .delete),
+                    try Diff.fromSlice(testing.allocator, "12", .insert),
+                    try Diff.fromSlice(testing.allocator, "wxyz", .equal),
+                    try Diff.fromSlice(testing.allocator, "cd", .delete),
+                    try Diff.fromSlice(testing.allocator, "34", .insert),
                 }),
                 .expected = &.{
-                    try Diff.fromString(testing.allocator, "abwxyzcd", .delete),
-                    try Diff.fromString(testing.allocator, "12wxyz34", .insert),
+                    try Diff.fromSlice(testing.allocator, "abwxyzcd", .delete),
+                    try Diff.fromSlice(testing.allocator, "12wxyz34", .insert),
                 },
             },
         };
@@ -1073,9 +1073,9 @@ test "pretty html" {
     const dmp = DMP.init(testing.allocator);
 
     const diffs: []Diff = @constCast(&[_]Diff{
-        try Diff.fromString(testing.allocator, "a\n", .equal),
-        try Diff.fromString(testing.allocator, "<B>b</B>", .delete),
-        try Diff.fromString(testing.allocator, "c&d", .insert),
+        try Diff.fromSlice(testing.allocator, "a\n", .equal),
+        try Diff.fromSlice(testing.allocator, "<B>b</B>", .delete),
+        try Diff.fromSlice(testing.allocator, "c&d", .insert),
     });
     const expected_text: []const u8 = "<span>a&para;<br></span><del style=\"background:#ffe6e6;\">&lt;B&gt;b&lt;/B&gt;</del><ins style=\"background:#e6ffe6;\">c&amp;d</ins>";
 
@@ -1090,9 +1090,9 @@ test "pretty text" {
     const dmp = DMP.init(testing.allocator);
 
     const diffs: []Diff = @constCast(&[_]Diff{
-        try Diff.fromString(testing.allocator, "a\n", .equal),
-        try Diff.fromString(testing.allocator, "<B>b</B>", .delete),
-        try Diff.fromString(testing.allocator, "c&d", .insert),
+        try Diff.fromSlice(testing.allocator, "a\n", .equal),
+        try Diff.fromSlice(testing.allocator, "<B>b</B>", .delete),
+        try Diff.fromSlice(testing.allocator, "c&d", .insert),
     });
     const expected_text: []const u8 = "a\n\x1b[31m<B>b</B>\x1b[0m\x1b[32mc&d\x1b[0m";
 
@@ -1107,13 +1107,13 @@ test "diff text" {
     const dmp = DMP.init(testing.allocator);
 
     const diffs: []Diff = @constCast(&[_]Diff{
-        try Diff.fromString(testing.allocator, "jump", .equal),
-        try Diff.fromString(testing.allocator, "s", .delete),
-        try Diff.fromString(testing.allocator, "ed", .insert),
-        try Diff.fromString(testing.allocator, " over ", .equal),
-        try Diff.fromString(testing.allocator, "the", .delete),
-        try Diff.fromString(testing.allocator, "a", .insert),
-        try Diff.fromString(testing.allocator, " lazy", .equal),
+        try Diff.fromSlice(testing.allocator, "jump", .equal),
+        try Diff.fromSlice(testing.allocator, "s", .delete),
+        try Diff.fromSlice(testing.allocator, "ed", .insert),
+        try Diff.fromSlice(testing.allocator, " over ", .equal),
+        try Diff.fromSlice(testing.allocator, "the", .delete),
+        try Diff.fromSlice(testing.allocator, "a", .insert),
+        try Diff.fromSlice(testing.allocator, " lazy", .equal),
     });
     const expected_text1: []const u8 = "jumps over the lazy";
     const expected_text2: []const u8 = "jumped over a lazy";
@@ -1141,14 +1141,14 @@ test "to from delta" {
     const dmp = DMP.init(testing.allocator);
 
     const diffs1: []const Diff = &.{
-        try Diff.fromString(testing.allocator, "jump", .equal),
-        try Diff.fromString(testing.allocator, "s", .delete),
-        try Diff.fromString(testing.allocator, "ed", .insert),
-        try Diff.fromString(testing.allocator, " over ", .equal),
-        try Diff.fromString(testing.allocator, "the", .delete),
-        try Diff.fromString(testing.allocator, "a", .insert),
-        try Diff.fromString(testing.allocator, " lazy", .equal),
-        try Diff.fromString(testing.allocator, "old dog", .insert),
+        try Diff.fromSlice(testing.allocator, "jump", .equal),
+        try Diff.fromSlice(testing.allocator, "s", .delete),
+        try Diff.fromSlice(testing.allocator, "ed", .insert),
+        try Diff.fromSlice(testing.allocator, " over ", .equal),
+        try Diff.fromSlice(testing.allocator, "the", .delete),
+        try Diff.fromSlice(testing.allocator, "a", .insert),
+        try Diff.fromSlice(testing.allocator, " lazy", .equal),
+        try Diff.fromSlice(testing.allocator, "old dog", .insert),
     };
     // errdefer for (diffs1) |*diff| diff.deinit(testing.allocator);
 
@@ -1161,9 +1161,9 @@ test "to from delta" {
     try testing.expectEqualStrings("=4\t-1\t+ed\t=6\t-3\t+a\t=5\t+old dog", delta1);
 
     const diffs2: []const Diff = &.{
-        try Diff.fromString(testing.allocator, "\u{0680} \x00 \t %", .equal),
-        try Diff.fromString(testing.allocator, "\u{0681} \x01 \n ^", .delete),
-        try Diff.fromString(testing.allocator, "\u{0682} \x02 \\ |", .insert),
+        try Diff.fromSlice(testing.allocator, "\u{0680} \x00 \t %", .equal),
+        try Diff.fromSlice(testing.allocator, "\u{0681} \x01 \n ^", .delete),
+        try Diff.fromSlice(testing.allocator, "\u{0682} \x02 \\ |", .insert),
     };
     // errdefer for (diffs2) |*diff| diff.deinit(testing.allocator);
 
@@ -1176,7 +1176,7 @@ test "to from delta" {
     try testing.expectEqualStrings("=7\t-7\t+%DA%82 %02 %5C %7C", delta2);
 
     const diffs3: []const Diff = &.{
-        try Diff.fromString(testing.allocator, "ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz 0123456789 - _ . ! ~ * ' ( ) ; / ? : @ & = + $ , # ", .insert),
+        try Diff.fromSlice(testing.allocator, "ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz 0123456789 - _ . ! ~ * ' ( ) ; / ? : @ & = + $ , # ", .insert),
     };
     // errdefer for (diffs3) |*diff| diff.deinit(testing.allocator);
 
@@ -1234,18 +1234,18 @@ test "x index" {
     for ([_]TestCase{
         .{
             .diffs = &.{
-                try Diff.fromString(testing.allocator, "a", .delete),
-                try Diff.fromString(testing.allocator, "1234", .insert),
-                try Diff.fromString(testing.allocator, "xyz", .equal),
+                try Diff.fromSlice(testing.allocator, "a", .delete),
+                try Diff.fromSlice(testing.allocator, "1234", .insert),
+                try Diff.fromSlice(testing.allocator, "xyz", .equal),
             },
             .location = 2,
             .expected = 5,
         },
         .{
             .diffs = &.{
-                try Diff.fromString(testing.allocator, "a", .equal),
-                try Diff.fromString(testing.allocator, "1234", .delete),
-                try Diff.fromString(testing.allocator, "xyz", .equal),
+                try Diff.fromSlice(testing.allocator, "a", .equal),
+                try Diff.fromSlice(testing.allocator, "1234", .delete),
+                try Diff.fromSlice(testing.allocator, "xyz", .equal),
             },
             .location = 3,
             .expected = 1,
@@ -1264,27 +1264,27 @@ test "levenstein" {
     var diffs: []Diff = undefined;
     {
         diffs = @constCast(&[_]Diff{
-            try Diff.fromString(testing.allocator, "abc", .delete),
-            try Diff.fromString(testing.allocator, "1234", .insert),
-            try Diff.fromString(testing.allocator, "xyz", .equal),
+            try Diff.fromSlice(testing.allocator, "abc", .delete),
+            try Diff.fromSlice(testing.allocator, "1234", .insert),
+            try Diff.fromSlice(testing.allocator, "xyz", .equal),
         })[0..];
         defer for (diffs) |*diff| diff.deinit(testing.allocator);
         try testing.expectEqual(4, dmp.diffLevenshtein(diffs));
     }
     {
         diffs = @constCast(&[_]Diff{
-            try Diff.fromString(testing.allocator, "xyz", .equal),
-            try Diff.fromString(testing.allocator, "abc", .delete),
-            try Diff.fromString(testing.allocator, "1234", .insert),
+            try Diff.fromSlice(testing.allocator, "xyz", .equal),
+            try Diff.fromSlice(testing.allocator, "abc", .delete),
+            try Diff.fromSlice(testing.allocator, "1234", .insert),
         })[0..];
         defer for (diffs) |*diff| diff.deinit(testing.allocator);
         try testing.expectEqual(4, dmp.diffLevenshtein(diffs));
     }
     {
         diffs = @constCast(&[_]Diff{
-            try Diff.fromString(testing.allocator, "abc", .delete),
-            try Diff.fromString(testing.allocator, "xyz", .equal),
-            try Diff.fromString(testing.allocator, "1234", .insert),
+            try Diff.fromSlice(testing.allocator, "abc", .delete),
+            try Diff.fromSlice(testing.allocator, "xyz", .equal),
+            try Diff.fromSlice(testing.allocator, "1234", .insert),
         });
         defer for (diffs) |*diff| diff.deinit(testing.allocator);
         try testing.expectEqual(7, dmp.diffLevenshtein(diffs));
@@ -1303,14 +1303,14 @@ test "bisect" {
     };
 
     for ([_]TestCase{ .{ .deadline = diff_max_duration, .expected = &.{
-        try Diff.fromString(testing.allocator, "c", .delete),
-        try Diff.fromString(testing.allocator, "m", .insert),
-        try Diff.fromString(testing.allocator, "a", .equal),
-        try Diff.fromString(testing.allocator, "t", .delete),
-        try Diff.fromString(testing.allocator, "p", .insert),
+        try Diff.fromSlice(testing.allocator, "c", .delete),
+        try Diff.fromSlice(testing.allocator, "m", .insert),
+        try Diff.fromSlice(testing.allocator, "a", .equal),
+        try Diff.fromSlice(testing.allocator, "t", .delete),
+        try Diff.fromSlice(testing.allocator, "p", .insert),
     } }, .{ .deadline = 0, .expected = &.{
-        try Diff.fromString(testing.allocator, "cat", .delete),
-        try Diff.fromString(testing.allocator, "map", .insert),
+        try Diff.fromSlice(testing.allocator, "cat", .delete),
+        try Diff.fromSlice(testing.allocator, "map", .insert),
     } } }) |test_case| {
         defer for (test_case.expected) |*diff| @constCast(diff).deinit(testing.allocator);
 
@@ -1328,7 +1328,7 @@ test "bisect" {
     // Test for invalid UTF-8 sequences
     {
         const diffs: []const Diff = &.{
-            try Diff.fromString(testing.allocator, "��", .equal),
+            try Diff.fromSlice(testing.allocator, "��", .equal),
         };
         defer for (diffs) |*diff| @constCast(diff).deinit(testing.allocator);
 
@@ -1363,46 +1363,46 @@ test "diff main" {
             .{
                 .text1 = "abc",
                 .text2 = "abc",
-                .expected = &.{try Diff.fromString(testing.allocator, "abc", .equal)},
+                .expected = &.{try Diff.fromSlice(testing.allocator, "abc", .equal)},
             },
             .{
                 .text1 = "abc",
                 .text2 = "ab123c",
                 .expected = &.{
-                    try Diff.fromString(testing.allocator, "ab", .equal),
-                    try Diff.fromString(testing.allocator, "123", .insert),
-                    try Diff.fromString(testing.allocator, "c", .equal),
+                    try Diff.fromSlice(testing.allocator, "ab", .equal),
+                    try Diff.fromSlice(testing.allocator, "123", .insert),
+                    try Diff.fromSlice(testing.allocator, "c", .equal),
                 },
             },
             .{
                 .text1 = "a123bc",
                 .text2 = "abc",
                 .expected = &.{
-                    try Diff.fromString(testing.allocator, "a", .equal),
-                    try Diff.fromString(testing.allocator, "123", .delete),
-                    try Diff.fromString(testing.allocator, "bc", .equal),
+                    try Diff.fromSlice(testing.allocator, "a", .equal),
+                    try Diff.fromSlice(testing.allocator, "123", .delete),
+                    try Diff.fromSlice(testing.allocator, "bc", .equal),
                 },
             },
             .{
                 .text1 = "abc",
                 .text2 = "a123b456c",
                 .expected = &.{
-                    try Diff.fromString(testing.allocator, "a", .equal),
-                    try Diff.fromString(testing.allocator, "123", .insert),
-                    try Diff.fromString(testing.allocator, "b", .equal),
-                    try Diff.fromString(testing.allocator, "456", .insert),
-                    try Diff.fromString(testing.allocator, "c", .equal),
+                    try Diff.fromSlice(testing.allocator, "a", .equal),
+                    try Diff.fromSlice(testing.allocator, "123", .insert),
+                    try Diff.fromSlice(testing.allocator, "b", .equal),
+                    try Diff.fromSlice(testing.allocator, "456", .insert),
+                    try Diff.fromSlice(testing.allocator, "c", .equal),
                 },
             },
             .{
                 .text1 = "a123b456c",
                 .text2 = "abc",
                 .expected = &.{
-                    try Diff.fromString(testing.allocator, "a", .equal),
-                    try Diff.fromString(testing.allocator, "123", .delete),
-                    try Diff.fromString(testing.allocator, "b", .equal),
-                    try Diff.fromString(testing.allocator, "456", .delete),
-                    try Diff.fromString(testing.allocator, "c", .equal),
+                    try Diff.fromSlice(testing.allocator, "a", .equal),
+                    try Diff.fromSlice(testing.allocator, "123", .delete),
+                    try Diff.fromSlice(testing.allocator, "b", .equal),
+                    try Diff.fromSlice(testing.allocator, "456", .delete),
+                    try Diff.fromSlice(testing.allocator, "c", .equal),
                 },
             },
         };
@@ -1442,77 +1442,77 @@ test "diff main" {
                 .text1 = "a",
                 .text2 = "b",
                 .expected = &.{
-                    try Diff.fromString(testing.allocator, "a", .delete),
-                    try Diff.fromString(testing.allocator, "b", .insert),
+                    try Diff.fromSlice(testing.allocator, "a", .delete),
+                    try Diff.fromSlice(testing.allocator, "b", .insert),
                 },
             },
             .{
                 .text1 = "Apples are a fruit.",
                 .text2 = "Bananas are also fruit.",
                 .expected = &.{
-                    try Diff.fromString(testing.allocator, "Apple", .delete),
-                    try Diff.fromString(testing.allocator, "Banana", .insert),
-                    try Diff.fromString(testing.allocator, "s are a", .equal),
-                    try Diff.fromString(testing.allocator, "lso", .insert),
-                    try Diff.fromString(testing.allocator, " fruit.", .equal),
+                    try Diff.fromSlice(testing.allocator, "Apple", .delete),
+                    try Diff.fromSlice(testing.allocator, "Banana", .insert),
+                    try Diff.fromSlice(testing.allocator, "s are a", .equal),
+                    try Diff.fromSlice(testing.allocator, "lso", .insert),
+                    try Diff.fromSlice(testing.allocator, " fruit.", .equal),
                 },
             },
             .{
                 .text1 = "ax\t",
                 .text2 = "\u{0680}x\u{0000}",
                 .expected = &.{
-                    try Diff.fromString(testing.allocator, "a", .delete),
-                    try Diff.fromString(testing.allocator, "\u{0680}", .insert),
-                    try Diff.fromString(testing.allocator, "x", .equal),
-                    try Diff.fromString(testing.allocator, "\t", .delete),
-                    try Diff.fromString(testing.allocator, "\u{0000}", .insert),
+                    try Diff.fromSlice(testing.allocator, "a", .delete),
+                    try Diff.fromSlice(testing.allocator, "\u{0680}", .insert),
+                    try Diff.fromSlice(testing.allocator, "x", .equal),
+                    try Diff.fromSlice(testing.allocator, "\t", .delete),
+                    try Diff.fromSlice(testing.allocator, "\u{0000}", .insert),
                 },
             },
             .{
                 .text1 = "1ayb2",
                 .text2 = "abxab",
                 .expected = &.{
-                    try Diff.fromString(testing.allocator, "1", .delete),
-                    try Diff.fromString(testing.allocator, "a", .equal),
-                    try Diff.fromString(testing.allocator, "y", .delete),
-                    try Diff.fromString(testing.allocator, "b", .equal),
-                    try Diff.fromString(testing.allocator, "2", .delete),
-                    try Diff.fromString(testing.allocator, "xab", .insert),
+                    try Diff.fromSlice(testing.allocator, "1", .delete),
+                    try Diff.fromSlice(testing.allocator, "a", .equal),
+                    try Diff.fromSlice(testing.allocator, "y", .delete),
+                    try Diff.fromSlice(testing.allocator, "b", .equal),
+                    try Diff.fromSlice(testing.allocator, "2", .delete),
+                    try Diff.fromSlice(testing.allocator, "xab", .insert),
                 },
             },
             .{
                 .text1 = "abcy",
                 .text2 = "xaxcxabc",
                 .expected = &.{
-                    try Diff.fromString(testing.allocator, "xaxcx", .insert),
-                    try Diff.fromString(testing.allocator, "abc", .equal),
-                    try Diff.fromString(testing.allocator, "y", .delete),
+                    try Diff.fromSlice(testing.allocator, "xaxcx", .insert),
+                    try Diff.fromSlice(testing.allocator, "abc", .equal),
+                    try Diff.fromSlice(testing.allocator, "y", .delete),
                 },
             },
             .{
                 .text1 = "ABCDa=bcd=efghijklmnopqrsEFGHIJKLMNOefg",
                 .text2 = "a-bcd-efghijklmnopqrs",
                 .expected = &.{
-                    try Diff.fromString(testing.allocator, "ABCD", .delete),
-                    try Diff.fromString(testing.allocator, "a", .equal),
-                    try Diff.fromString(testing.allocator, "=", .delete),
-                    try Diff.fromString(testing.allocator, "-", .insert),
-                    try Diff.fromString(testing.allocator, "bcd", .equal),
-                    try Diff.fromString(testing.allocator, "=", .delete),
-                    try Diff.fromString(testing.allocator, "-", .insert),
-                    try Diff.fromString(testing.allocator, "efghijklmnopqrs", .equal),
-                    try Diff.fromString(testing.allocator, "EFGHIJKLMNOefg", .delete),
+                    try Diff.fromSlice(testing.allocator, "ABCD", .delete),
+                    try Diff.fromSlice(testing.allocator, "a", .equal),
+                    try Diff.fromSlice(testing.allocator, "=", .delete),
+                    try Diff.fromSlice(testing.allocator, "-", .insert),
+                    try Diff.fromSlice(testing.allocator, "bcd", .equal),
+                    try Diff.fromSlice(testing.allocator, "=", .delete),
+                    try Diff.fromSlice(testing.allocator, "-", .insert),
+                    try Diff.fromSlice(testing.allocator, "efghijklmnopqrs", .equal),
+                    try Diff.fromSlice(testing.allocator, "EFGHIJKLMNOefg", .delete),
                 },
             },
             .{
                 .text1 = "a [[Pennsylvania]] and [[New",
                 .text2 = " and [[Pennsylvania]]",
                 .expected = &.{
-                    try Diff.fromString(testing.allocator, " ", .insert),
-                    try Diff.fromString(testing.allocator, "a", .equal),
-                    try Diff.fromString(testing.allocator, "nd", .insert),
-                    try Diff.fromString(testing.allocator, " [[Pennsylvania]]", .equal),
-                    try Diff.fromString(testing.allocator, " and [[New", .delete),
+                    try Diff.fromSlice(testing.allocator, " ", .insert),
+                    try Diff.fromSlice(testing.allocator, "a", .equal),
+                    try Diff.fromSlice(testing.allocator, "nd", .insert),
+                    try Diff.fromSlice(testing.allocator, " [[Pennsylvania]]", .equal),
+                    try Diff.fromSlice(testing.allocator, " and [[New", .delete),
                 },
             },
         };
@@ -1545,7 +1545,7 @@ test "diff main" {
     // Test for invalid UTF-8 sequences
     {
         const diffs: []const Diff = &.{
-            try Diff.fromString(testing.allocator, "��", .delete),
+            try Diff.fromSlice(testing.allocator, "��", .delete),
         };
         defer for (diffs) |*diff| @constCast(diff).deinit(testing.allocator);
 
@@ -1674,9 +1674,9 @@ test "partial line index" {
     try DiffPrivate.diffCharsToLinesLineArray(testing.allocator, &diffs, linearray);
 
     const expect: []const Diff = &.{
-        try Diff.fromString(testing.allocator, "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\n", .equal),
-        try Diff.fromString(testing.allocator, "line 10 text1", .delete),
-        try Diff.fromString(testing.allocator, "line 10 text2", .insert),
+        try Diff.fromSlice(testing.allocator, "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\n", .equal),
+        try Diff.fromSlice(testing.allocator, "line 10 text1", .delete),
+        try Diff.fromSlice(testing.allocator, "line 10 text2", .insert),
     };
     defer for (expect) |*diff| @constCast(diff).deinit(testing.allocator);
 

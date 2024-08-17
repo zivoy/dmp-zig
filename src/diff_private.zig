@@ -231,7 +231,7 @@ fn diffLineModeTimer(allocator: Allocator, diff_timeout: f32, text1: []const u8,
     var diff_list = std.ArrayList(Diff).fromOwnedSlice(allocator, diffs);
     defer diff_list.deinit();
     errdefer for (diff_list.items) |*diff| diff.deinit(allocator);
-    try diff_list.append(try Diff.fromString(allocator, "", .equal));
+    try diff_list.append(try Diff.fromSlice(allocator, "", .equal));
 
     var pointer: usize = 0;
     var count_delete: usize = 0;
