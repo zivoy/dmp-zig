@@ -4,7 +4,7 @@ const DiffPrivate = @import("diff_private.zig");
 
 const diff_max_duration = @import("diff.zig").diff_max_duration;
 const Diff = @import("diff.zig").Diff;
-const DiffError = @import("diff.zig").DiffError;
+const DiffError = @import("diff.zig").Error;
 
 const testing = std.testing;
 // INFO: these tests have an issue where they wont be deinited if it failes in the middle
@@ -57,14 +57,14 @@ test "common suffix" {
 }
 
 test "common overlap" {
-    try testing.expectEqual(0, DiffPrivate.diffCommonOverlap("", "abcd"));
-    try testing.expectEqual(3, DiffPrivate.diffCommonOverlap("abc", "abcd"));
-    try testing.expectEqual(0, DiffPrivate.diffCommonOverlap("123456", "abcd"));
-    try testing.expectEqual(3, DiffPrivate.diffCommonOverlap("123456xxx", "xxxabcd"));
+    try testing.expectEqual(0, DiffPrivate.commonOverlap("", "abcd"));
+    try testing.expectEqual(3, DiffPrivate.commonOverlap("abc", "abcd"));
+    try testing.expectEqual(0, DiffPrivate.commonOverlap("123456", "abcd"));
+    try testing.expectEqual(3, DiffPrivate.commonOverlap("123456xxx", "xxxabcd"));
 
     // Some overly clever languages (C#) may treat ligatures as equal to their
     // component letters.  E.g. U+FB01 == 'fi'
-    try testing.expectEqual(0, DiffPrivate.diffCommonOverlap("fi", "\u{fb01}i"));
+    try testing.expectEqual(0, DiffPrivate.commonOverlap("fi", "\u{fb01}i"));
 }
 
 test "halfmatch" {
@@ -145,7 +145,7 @@ test "halfmatch" {
             .common = "HelloHe",
         } },
     }) |test_case| {
-        const actual_n = try DiffPrivate.diffHalfMatch(testing.allocator, dmp.diff_timeout, test_case.text1, test_case.text2);
+        const actual_n = try DiffPrivate.halfMatch(testing.allocator, dmp.diff_timeout, test_case.text1, test_case.text2);
         defer if (actual_n) |actual| testing.allocator.free(actual.common);
         if (test_case.expected) |expect| {
             try testing.expect(actual_n != null);
@@ -161,7 +161,7 @@ test "halfmatch" {
     }
 
     dmp.diff_timeout = 0;
-    const actual_n = try DiffPrivate.diffHalfMatch(testing.allocator, dmp.diff_timeout, "qHilloHelloHew", "xHelloHeHulloy");
+    const actual_n = try DiffPrivate.halfMatch(testing.allocator, dmp.diff_timeout, "qHilloHelloHew", "xHelloHeHulloy");
     defer if (actual_n) |actual| testing.allocator.free(actual.common);
     try testing.expect(actual_n == null);
 }
@@ -174,7 +174,7 @@ test "bisect split" {
     try testing.expect(std.unicode.utf8ValidateSlice(text1));
     try testing.expect(std.unicode.utf8ValidateSlice(text2));
 
-    const diffs = try DiffPrivate.diffBisectSplit(testing.allocator, dmp.diff_timeout, text1, text2, 7, 6, std.time.ns_per_hour);
+    const diffs = try DiffPrivate.bisectSplit(testing.allocator, dmp.diff_timeout, text1, text2, 7, 6, std.time.ns_per_hour);
     defer testing.allocator.free(diffs);
     defer for (diffs) |*diff| diff.deinit(testing.allocator);
 
@@ -236,7 +236,7 @@ test "lines to chars" {
         var text2 = test_case.text2;
         defer testing.allocator.free(text1);
         defer testing.allocator.free(text2);
-        var line_array = try DiffPrivate.diffLinesToChars(testing.allocator, &text1, &text2);
+        var line_array = try DiffPrivate.linesToChars(testing.allocator, &text1, &text2);
         defer line_array.deinit();
         try testing.expectEqualStrings(test_case.expected_text1, text1);
         try testing.expectEqualStrings(test_case.expected_text2, text2);
@@ -299,7 +299,7 @@ test "chars to lines" {
         defer @constCast(&test_case.lines).deinit();
         defer for (diffs) |*diff| diff.deinit(testing.allocator);
         defer for (test_case.expected) |*diff| @constCast(diff).deinit(testing.allocator);
-        try DiffPrivate.diffCharsToLinesLineArray(testing.allocator, &diffs, test_case.lines);
+        try DiffPrivate.charsToLinesLineArray(testing.allocator, &diffs, test_case.lines);
 
         try testing.expectEqual(diffs.len, test_case.expected.len);
         for (diffs, test_case.expected) |diff, expected| {
@@ -1314,7 +1314,7 @@ test "bisect" {
     } } }) |test_case| {
         defer for (test_case.expected) |*diff| @constCast(diff).deinit(testing.allocator);
 
-        const actual = try DiffPrivate.diffBisect(testing.allocator, dmp.diff_timeout, text1, text2, test_case.deadline);
+        const actual = try DiffPrivate.bisect(testing.allocator, dmp.diff_timeout, text1, text2, test_case.deadline);
         defer testing.allocator.free(actual);
         defer for (actual) |*diff| diff.deinit(testing.allocator);
 
@@ -1332,7 +1332,7 @@ test "bisect" {
         };
         defer for (diffs) |*diff| @constCast(diff).deinit(testing.allocator);
 
-        const actual = try DiffPrivate.diffBisect(testing.allocator, dmp.diff_timeout, "\xe0\xe5", "\xe0\xe5", std.time.ns_per_min);
+        const actual = try DiffPrivate.bisect(testing.allocator, dmp.diff_timeout, "\xe0\xe5", "\xe0\xe5", std.time.ns_per_min);
         defer testing.allocator.free(actual);
         defer for (actual) |*diff| diff.deinit(testing.allocator);
 
@@ -1664,14 +1664,14 @@ test "partial line index" {
     );
     defer testing.allocator.free(text2);
 
-    var linearray = try DiffPrivate.diffLinesToChars(testing.allocator, &text1, &text2);
+    var linearray = try DiffPrivate.linesToChars(testing.allocator, &text1, &text2);
     defer linearray.deinit();
 
     var diffs = try dmp.diffMainStringStringBool(text1, text2, false);
     defer testing.allocator.free(diffs);
     defer for (diffs) |*diff| diff.deinit(testing.allocator);
 
-    try DiffPrivate.diffCharsToLinesLineArray(testing.allocator, &diffs, linearray);
+    try DiffPrivate.charsToLinesLineArray(testing.allocator, &diffs, linearray);
 
     const expect: []const Diff = &.{
         try Diff.fromSlice(testing.allocator, "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\n", .equal),

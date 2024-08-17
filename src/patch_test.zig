@@ -4,7 +4,7 @@ const std = @import("std");
 const Diff = @import("diff.zig").Diff;
 const Patch = @import("patch.zig").Patch;
 const PatchList = @import("patch.zig").PatchList;
-const PatchError = @import("patch.zig").PatchError;
+const PatchError = @import("patch.zig").Error;
 
 const testing = std.testing;
 

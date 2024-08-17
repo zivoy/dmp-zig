@@ -8,7 +8,7 @@ const DiffPrivate = @import("diff_private.zig");
 
 pub const diff_max_duration = std.math.maxInt(u64);
 
-pub const DiffError = error{
+pub const Error = error{
     DeltaContainsIlligalOperation,
     DeltaContainsInvalidUTF8,
     DeltaContainsNegetiveNumber,
@@ -16,17 +16,17 @@ pub const DiffError = error{
     DeltaShorterThenSource,
 };
 
-pub const DiffOperation = enum(i2) {
+pub const Operation = enum(i2) {
     delete = -1,
     equal = 0,
     insert = 1,
 };
 
 pub const Diff = struct {
-    operation: DiffOperation,
+    operation: Operation,
     text: []u8,
 
-    pub fn fromSlice(allocator: std.mem.Allocator, text: []const u8, operation: DiffOperation) std.mem.Allocator.Error!Diff {
+    pub fn fromSlice(allocator: std.mem.Allocator, text: []const u8, operation: Operation) std.mem.Allocator.Error!Diff {
         const owned_text = try allocator.alloc(u8, text.len);
         @memcpy(owned_text.ptr, text);
         return .{
@@ -45,28 +45,28 @@ pub const Diff = struct {
 ///Run a faster, slightly less optimal diff.
 ///This method allows the 'checklines' of `diffMainStringStringBool` to be optional.
 ///Most of the time checklines is wanted, so default to true.
-pub fn diffMainStringString(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8) ![]Diff {
-    return diffMainStringStringBool(allocator, diff_timeout, text1, text2, true);
+pub fn mainStringString(allocator: Allocator, diff_timeout: f32, text_a: []const u8, text_b: []const u8) ![]Diff {
+    return mainStringStringBool(allocator, diff_timeout, text_a, text_b, true);
 }
 
 ///Find the differences between two texts.
-pub fn diffMainStringStringBool(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, check_lines: bool) ![]Diff {
+pub fn mainStringStringBool(allocator: Allocator, diff_timeout: f32, text_a: []const u8, text_b: []const u8, check_lines: bool) ![]Diff {
     var deadline: u64 = undefined;
     if (diff_timeout > 0) {
         deadline = @intFromFloat(diff_timeout * std.time.ns_per_s);
     } else {
         deadline = diff_max_duration;
     }
-    return DiffPrivate.diffMainStringStringBoolTimeout(allocator, diff_timeout, text1, text2, check_lines, deadline);
+    return DiffPrivate.mainStringStringBoolTimeout(allocator, diff_timeout, text_a, text_b, check_lines, deadline);
 }
 
 ///Determine the common prefix of two strings.
-pub fn diffCommonPrefix(text1: []const u8, text2: []const u8) usize {
-    std.debug.assert(std.unicode.utf8ValidateSlice(text1));
-    std.debug.assert(std.unicode.utf8ValidateSlice(text2));
+pub fn commonPrefix(text_a: []const u8, text_b: []const u8) usize {
+    std.debug.assert(std.unicode.utf8ValidateSlice(text_a));
+    std.debug.assert(std.unicode.utf8ValidateSlice(text_b));
 
-    var itr1 = std.unicode.Utf8View.initUnchecked(text1).iterator();
-    var itr2 = std.unicode.Utf8View.initUnchecked(text2).iterator();
+    var itr1 = std.unicode.Utf8View.initUnchecked(text_a).iterator();
+    var itr2 = std.unicode.Utf8View.initUnchecked(text_b).iterator();
 
     var len: usize = 0;
     while (true) {
@@ -79,12 +79,12 @@ pub fn diffCommonPrefix(text1: []const u8, text2: []const u8) usize {
 }
 
 ///Determine the common suffix of two strings.
-pub fn diffCommonSuffix(text1: []const u8, text2: []const u8) usize {
-    std.debug.assert(std.unicode.utf8ValidateSlice(text1));
-    std.debug.assert(std.unicode.utf8ValidateSlice(text2));
+pub fn commonSuffix(text_a: []const u8, text_b: []const u8) usize {
+    std.debug.assert(std.unicode.utf8ValidateSlice(text_a));
+    std.debug.assert(std.unicode.utf8ValidateSlice(text_b));
 
-    var itr1 = utils.initUtf8BackwardsIterator(text1);
-    var itr2 = utils.initUtf8BackwardsIterator(text2);
+    var itr1 = utils.initUtf8BackwardsIterator(text_a);
+    var itr2 = utils.initUtf8BackwardsIterator(text_b);
 
     var len: usize = 0;
     while (true) {
@@ -97,7 +97,7 @@ pub fn diffCommonSuffix(text1: []const u8, text2: []const u8) usize {
 }
 
 ///Reduce the number of edits by eliminating semantically trivial equalities.
-pub fn diffCleanupSemantic(allocator: Allocator, diffs: *[]Diff) Allocator.Error!void {
+pub fn cleanupSemantic(allocator: Allocator, diffs: *[]Diff) Allocator.Error!void {
     if (diffs.len == 0) return;
     var diff_list = std.ArrayList(Diff).fromOwnedSlice(allocator, diffs.*);
     defer diff_list.deinit();
@@ -190,9 +190,9 @@ pub fn diffCleanupSemantic(allocator: Allocator, diffs: *[]Diff) Allocator.Error
     // Normalize the diff.
     diffs.* = try diff_list.toOwnedSlice();
     if (changes) {
-        try diffCleanupMerge(allocator, diffs);
+        try cleanupMerge(allocator, diffs);
     }
-    try diffCleanupSemanticLossless(allocator, diffs);
+    try cleanupSemanticLossless(allocator, diffs);
     diff_list.capacity = diffs.len;
     diff_list.items = diffs.*;
 
@@ -207,8 +207,8 @@ pub fn diffCleanupSemantic(allocator: Allocator, diffs: *[]Diff) Allocator.Error
         var last_diff = diff_list.items[pointer - 1];
         var diff = diff_list.items[pointer];
         if (last_diff.operation == .delete and diff.operation == .insert) {
-            const overlap_length1 = DiffPrivate.diffCommonOverlap(last_diff.text, diff.text);
-            const overlap_length2 = DiffPrivate.diffCommonOverlap(diff.text, last_diff.text);
+            const overlap_length1 = DiffPrivate.commonOverlap(last_diff.text, diff.text);
+            const overlap_length2 = DiffPrivate.commonOverlap(diff.text, last_diff.text);
             if (overlap_length1 >= overlap_length2) {
                 std.debug.assert(std.unicode.utf8ValidateSlice(last_diff.text));
                 std.debug.assert(std.unicode.utf8ValidateSlice(diff.text));
@@ -261,7 +261,7 @@ pub fn diffCleanupSemantic(allocator: Allocator, diffs: *[]Diff) Allocator.Error
 ///Look for single edits surrounded on both sides by equalities
 ///which can be shifted sideways to align the edit to a word boundary.
 ///e.g: The c<ins>at c</ins>ame. -> The <ins>cat </ins>came.
-pub fn diffCleanupSemanticLossless(allocator: Allocator, diffs: *[]Diff) !void {
+pub fn cleanupSemanticLossless(allocator: Allocator, diffs: *[]Diff) !void {
     if (diffs.len == 0) return;
 
     var diff_list = std.ArrayList(Diff).fromOwnedSlice(allocator, diffs.*);
@@ -290,7 +290,7 @@ pub fn diffCleanupSemanticLossless(allocator: Allocator, diffs: *[]Diff) !void {
             try equality2.appendSlice(diff_list.items[pointer + 1].text);
 
             // First, shift the edit as far left as possible.
-            const common_offset = diffCommonSuffix(equality1.items, edit.items);
+            const common_offset = commonSuffix(equality1.items, edit.items);
             if (common_offset > 0) {
                 equality1.items.len -= common_offset;
 
@@ -305,8 +305,8 @@ pub fn diffCleanupSemanticLossless(allocator: Allocator, diffs: *[]Diff) !void {
             var best_equality1_len = equality1.items.len;
             var edit_start: usize = 0;
             var equality2_start: usize = 0;
-            var best_score = DiffPrivate.diffCleanupSemanticScore(equality1.items, edit.items) +
-                DiffPrivate.diffCleanupSemanticScore(edit.items, equality2.items);
+            var best_score = DiffPrivate.cleanupSemanticScore(equality1.items, edit.items) +
+                DiffPrivate.cleanupSemanticScore(edit.items, equality2.items);
 
             while (edit.items.len - edit_start != 0 and
                 equality2.items.len - equality2_start != 0)
@@ -325,8 +325,8 @@ pub fn diffCleanupSemanticLossless(allocator: Allocator, diffs: *[]Diff) !void {
 
                 equality2_start += cp_len;
 
-                const score = DiffPrivate.diffCleanupSemanticScore(equality1.items, edit.items[edit_start..]) +
-                    DiffPrivate.diffCleanupSemanticScore(edit.items[edit_start..], equality2.items[equality2_start..]);
+                const score = DiffPrivate.cleanupSemanticScore(equality1.items, edit.items[edit_start..]) +
+                    DiffPrivate.cleanupSemanticScore(edit.items[edit_start..], equality2.items[equality2_start..]);
                 // The >= encourages trailing rather than leading whitespace on edits.
                 if (score >= best_score) {
                     best_score = score;
@@ -375,7 +375,7 @@ pub fn diffCleanupSemanticLossless(allocator: Allocator, diffs: *[]Diff) !void {
 }
 
 ///Reduce the number of edits by eliminating operationally trivial equalities.
-pub fn diffCleanupEfficiency(allocator: Allocator, diff_edit_cost: u16, diffs: *[]Diff) Allocator.Error!void {
+pub fn cleanupEfficiency(allocator: Allocator, diff_edit_cost: u16, diffs: *[]Diff) Allocator.Error!void {
     if (diffs.len == 0) return;
 
     var diff_list = std.ArrayList(Diff).fromOwnedSlice(allocator, diffs.*);
@@ -483,7 +483,7 @@ pub fn diffCleanupEfficiency(allocator: Allocator, diff_edit_cost: u16, diffs: *
 
     if (changes) {
         diffs.* = try diff_list.toOwnedSlice();
-        try diffCleanupMerge(allocator, diffs);
+        try cleanupMerge(allocator, diffs);
         diff_list.capacity = diffs.len;
         diff_list.items = diffs.*;
     }
@@ -493,7 +493,7 @@ pub fn diffCleanupEfficiency(allocator: Allocator, diff_edit_cost: u16, diffs: *
 
 ///Reorder and merge like edit sections.  Merge equalities.
 ///Any edit section can move as long as it doesn't cross an equality.
-pub fn diffCleanupMerge(allocator: Allocator, diffs: *[]Diff) !void {
+pub fn cleanupMerge(allocator: Allocator, diffs: *[]Diff) !void {
     if (diffs.len == 0) return;
     var diff_list = std.ArrayList(Diff).fromOwnedSlice(allocator, diffs.*);
     defer diff_list.deinit();
@@ -531,7 +531,7 @@ pub fn diffCleanupMerge(allocator: Allocator, diffs: *[]Diff) !void {
                 if (count_delete + count_insert > 1) {
                     if (count_delete != 0 and count_insert != 0) {
                         // Factor out any common prefixies.
-                        common_length = diffCommonPrefix(text_insert.items, text_delete.items);
+                        common_length = commonPrefix(text_insert.items, text_delete.items);
                         if (common_length != 0) {
                             const x = pointer - count_delete - count_insert;
                             const common_text = text_insert.items[0..common_length];
@@ -550,7 +550,7 @@ pub fn diffCleanupMerge(allocator: Allocator, diffs: *[]Diff) !void {
                         }
 
                         // Factor out any common suffixies.
-                        common_length = diffCommonSuffix(text_insert.items, text_delete.items);
+                        common_length = commonSuffix(text_insert.items, text_delete.items);
                         if (common_length != 0) {
                             const old_len = try utils.resize(u8, allocator, &diff.text, diff.text.len + common_length);
                             std.mem.copyBackwards(u8, diff.text[common_length..], diff.text[0..old_len]);
@@ -664,13 +664,13 @@ pub fn diffCleanupMerge(allocator: Allocator, diffs: *[]Diff) !void {
 
     // If shifts were made, the diff needs reordering and another shift sweep.
     if (changes) {
-        try diffCleanupMerge(allocator, diffs);
+        try cleanupMerge(allocator, diffs);
     }
 }
 
 ///loc is a location in text1, compute and return the equivalent location in text2.
 ///e.g. "The cat" vs "The big cat", 1->1, 5->8
-pub fn diffXIndex(diffs: []Diff, loc: usize) usize {
+pub fn xIndex(diffs: []Diff, loc: usize) usize {
     var chars1: usize = 0;
     var chars2: usize = 0;
     var last_chars1: usize = 0;
@@ -703,13 +703,13 @@ pub fn diffXIndex(diffs: []Diff, loc: usize) usize {
 }
 
 ///Convert a Diff list into a pretty HTML report.
-pub fn diffPrettyHtml(allocator: Allocator, diffs: []Diff) Allocator.Error![:0]const u8 {
+pub fn prettyHtml(allocator: Allocator, diffs: []Diff) Allocator.Error![:0]const u8 {
     var text = std.ArrayList(u8).init(allocator);
     defer text.deinit();
-    try diffPrettyHtmlWriter(text.writer(), diffs);
+    try prettyHtmlWriter(text.writer(), diffs);
     return text.toOwnedSliceSentinel(0);
 }
-pub fn diffPrettyHtmlWriter(writer: anytype, diffs: []Diff) @TypeOf(writer).Error!void {
+pub fn prettyHtmlWriter(writer: anytype, diffs: []Diff) @TypeOf(writer).Error!void {
     for (diffs) |diff|
         switch (diff.operation) {
             .equal => {
@@ -746,13 +746,13 @@ fn writeHtmlSanitized(writer: anytype, text: []const u8) @TypeOf(writer).Error!v
 }
 
 ///Converts a []Diff into a colored text report.
-pub fn diffPrettyText(allocator: Allocator, diffs: []Diff) Allocator.Error![:0]const u8 {
+pub fn prettyText(allocator: Allocator, diffs: []Diff) Allocator.Error![:0]const u8 {
     var text = std.ArrayList(u8).init(allocator);
     defer text.deinit();
-    try diffPrettyTextWriter(text.writer(), diffs);
+    try prettyTextWriter(text.writer(), diffs);
     return text.toOwnedSliceSentinel(0);
 }
-pub fn diffPrettyTextWriter(writer: anytype, diffs: []Diff) @TypeOf(writer).Error!void {
+pub fn prettyTextWriter(writer: anytype, diffs: []Diff) @TypeOf(writer).Error!void {
     for (diffs) |diff|
         switch (diff.operation) {
             .equal => try writer.writeAll(diff.text),
@@ -762,7 +762,7 @@ pub fn diffPrettyTextWriter(writer: anytype, diffs: []Diff) @TypeOf(writer).Erro
 }
 
 ///Compute and return the source text (all equalities and deletions).
-pub fn diffText1(allocator: Allocator, diffs: []Diff) Allocator.Error![:0]const u8 {
+pub fn text1(allocator: Allocator, diffs: []Diff) Allocator.Error![:0]const u8 {
     var len: usize = 0;
     for (diffs) |diff| if (diff.operation != .insert) {
         len += diff.text.len;
@@ -782,7 +782,7 @@ pub fn diffText1(allocator: Allocator, diffs: []Diff) Allocator.Error![:0]const 
 }
 
 ///Compute and return the destination text (all equalities and insertions).
-pub fn diffText2(allocator: Allocator, diffs: []Diff) Allocator.Error![:0]const u8 {
+pub fn text2(allocator: Allocator, diffs: []Diff) Allocator.Error![:0]const u8 {
     var len: usize = 0;
     for (diffs) |diff| if (diff.operation != .delete) {
         len += diff.text.len;
@@ -802,8 +802,8 @@ pub fn diffText2(allocator: Allocator, diffs: []Diff) Allocator.Error![:0]const 
 }
 
 ///Compute the Levenshtein distance; the number of inserted, deleted or substituted characters.
-pub fn diffLevenshtein(diffs: []Diff) usize {
-    var levenshtein: usize = 0;
+pub fn levenshtein(diffs: []Diff) usize {
+    var levenshtein_d: usize = 0;
     var insertions: usize = 0;
     var deletions: usize = 0;
 
@@ -814,27 +814,27 @@ pub fn diffLevenshtein(diffs: []Diff) usize {
             .delete => deletions += std.unicode.utf8CountCodepoints(diff.text) catch unreachable,
             .equal => {
                 // A deletion and an insertion is one substitution.
-                levenshtein += @max(insertions, deletions);
+                levenshtein_d += @max(insertions, deletions);
                 insertions = 0;
                 deletions = 0;
             },
         }
     }
-    levenshtein += @max(insertions, deletions);
-    return levenshtein;
+    levenshtein_d += @max(insertions, deletions);
+    return levenshtein_d;
 }
 
 ///Crush the diff into an encoded string which describes the operations
 ///required to transform text1 into text2.
 ///E.g. =3\t-2\t+ing  -> Keep 3 chars, delete 2 chars, insert 'ing'.
 ///Operations are tab-separated.  Inserted text is escaped using %xx notation.
-pub fn diffToDelta(allocator: Allocator, diffs: []Diff) Allocator.Error![:0]const u8 {
+pub fn toDelta(allocator: Allocator, diffs: []Diff) Allocator.Error![:0]const u8 {
     var text = std.ArrayList(u8).init(allocator);
     defer text.deinit();
-    try diffToDeltaWriter(text.writer(), diffs);
+    try toDeltaWriter(text.writer(), diffs);
     return text.toOwnedSliceSentinel(0);
 }
-pub fn diffToDeltaWriter(writer: anytype, diffs: []Diff) @TypeOf(writer).Error!void {
+pub fn toDeltaWriter(writer: anytype, diffs: []Diff) @TypeOf(writer).Error!void {
     for (diffs, 1..) |diff, i| {
         std.debug.assert(std.unicode.utf8ValidateSlice(diff.text));
         switch (diff.operation) {
@@ -851,7 +851,7 @@ pub fn diffToDeltaWriter(writer: anytype, diffs: []Diff) @TypeOf(writer).Error!v
 
 ///Given the original text1, and an encoded string which describes the
 ///operations required to transform text1 into text2, compute the full diff.
-pub fn diffFromDelta(allocator: Allocator, text1: []const u8, delta: []const u8) (DiffError || std.fmt.ParseIntError || Allocator.Error)![]Diff {
+pub fn fromDelta(allocator: Allocator, text_a: []const u8, delta: []const u8) (Error || std.fmt.ParseIntError || Allocator.Error)![]Diff {
     var diffs = std.ArrayList(Diff).init(allocator);
     defer diffs.deinit();
     errdefer for (diffs.items) |*diff| diff.deinit(allocator);
@@ -873,23 +873,23 @@ pub fn diffFromDelta(allocator: Allocator, text1: []const u8, delta: []const u8)
                 defer allocator.free(param_encoded);
                 @memcpy(param_encoded, param);
                 const line = std.Uri.percentDecodeInPlace(param_encoded);
-                if (!std.unicode.utf8ValidateSlice(line)) return DiffError.DeltaContainsInvalidUTF8;
+                if (!std.unicode.utf8ValidateSlice(line)) return Error.DeltaContainsInvalidUTF8;
                 try diffs.append(try Diff.fromSlice(allocator, line, .insert));
             },
             '-', '=' => {
                 const count = try std.fmt.parseInt(isize, param, 10);
-                if (count < 0) return DiffError.DeltaContainsNegetiveNumber;
+                if (count < 0) return Error.DeltaContainsNegetiveNumber;
 
-                if (pointer > text1.len) return DiffError.DeltaLongerThenSource;
+                if (pointer > text_a.len) return Error.DeltaLongerThenSource;
 
                 var len: usize = 0;
                 for (0..@intCast(count)) |_| {
-                    if (pointer + len >= text1.len) return DiffError.DeltaLongerThenSource;
-                    len += std.unicode.utf8ByteSequenceLength(text1[pointer + len]) catch return DiffError.DeltaContainsInvalidUTF8;
+                    if (pointer + len >= text_a.len) return Error.DeltaLongerThenSource;
+                    len += std.unicode.utf8ByteSequenceLength(text_a[pointer + len]) catch return Error.DeltaContainsInvalidUTF8;
                 }
-                if (pointer + len > text1.len) return DiffError.DeltaLongerThenSource;
+                if (pointer + len > text_a.len) return Error.DeltaLongerThenSource;
 
-                const line = text1[pointer .. pointer + len];
+                const line = text_a[pointer .. pointer + len];
                 pointer += len;
                 if (token[0] == '=') {
                     try diffs.append(try Diff.fromSlice(allocator, line, .equal));
@@ -897,10 +897,10 @@ pub fn diffFromDelta(allocator: Allocator, text1: []const u8, delta: []const u8)
                     try diffs.append(try Diff.fromSlice(allocator, line, .delete));
                 }
             },
-            else => return DiffError.DeltaContainsIlligalOperation,
+            else => return Error.DeltaContainsIlligalOperation,
         }
     }
-    if (pointer > text1.len) return DiffError.DeltaLongerThenSource;
-    if (pointer < text1.len) return DiffError.DeltaShorterThenSource;
+    if (pointer > text_a.len) return Error.DeltaLongerThenSource;
+    if (pointer < text_a.len) return Error.DeltaShorterThenSource;
     return diffs.toOwnedSlice();
 }

@@ -2,7 +2,7 @@ const std = @import("std");
 const Self = @import("diffmatchpatch.zig");
 
 ///Compute and return the score for a match with n_errors and x location.
-pub fn matchBitapScore(match_distance: u32, n_errors: u32, x: usize, loc: usize, pattern: []const u8) f64 {
+pub fn bitapScore(match_distance: u32, n_errors: u32, x: usize, loc: usize, pattern: []const u8) f64 {
     const accuracy: f64 = @as(f64, @floatFromInt(n_errors)) / @as(f64, @floatFromInt(pattern.len));
     const proximity: usize = @intCast(@abs(@as(isize, @intCast(loc)) - @as(isize, @intCast(x))));
     if (match_distance == 0) {

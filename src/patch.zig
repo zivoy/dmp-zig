@@ -8,7 +8,7 @@ const Allocator = std.mem.Allocator;
 
 const utils = @import("utils.zig");
 
-pub const PatchError = error{
+pub const Error = error{
     InvalidPatchMode,
     InvalidPatchString,
 };
@@ -102,7 +102,7 @@ pub const Patch = struct {
 
 ///Increase the context until it is unique,
 ///but don't let the pattern expand beyond match_max_bits.
-pub fn patchAddContext(comptime MatchMaxContainer: type, allocator: Allocator, patch_margin: u16, patch: *Patch, text: []const u8) Allocator.Error!void {
+pub fn addContext(comptime MatchMaxContainer: type, allocator: Allocator, patch_margin: u16, patch: *Patch, text: []const u8) Allocator.Error!void {
     const match_max_bits = @bitSizeOf(MatchMaxContainer);
 
     if (text.len == 0) return;
@@ -149,37 +149,37 @@ pub fn patchAddContext(comptime MatchMaxContainer: type, allocator: Allocator, p
 // patch make parts
 ///Compute a list of patches to turn text1 into text2.
 ///A set of diffs will be computed.
-pub fn patchMakeStringString(comptime MatchMaxContainer: type, allocator: Allocator, patch_margin: u16, diff_edit_cost: u16, diff_timeout: f32, text1: [:0]const u8, text2: [:0]const u8) Allocator.Error!PatchList {
-    var diffs = try diff_funcs.diffMainStringStringBool(allocator, diff_timeout, text1, text2, true);
+pub fn makeStringString(comptime MatchMaxContainer: type, allocator: Allocator, patch_margin: u16, diff_edit_cost: u16, diff_timeout: f32, text1: [:0]const u8, text2: [:0]const u8) Allocator.Error!PatchList {
+    var diffs = try diff_funcs.mainStringStringBool(allocator, diff_timeout, text1, text2, true);
     defer allocator.free(diffs);
     errdefer for (diffs) |*diff| diff.deinit(allocator);
     if (diffs.len > 2) {
-        try diff_funcs.diffCleanupSemantic(allocator, &diffs);
-        try diff_funcs.diffCleanupEfficiency(allocator, diff_edit_cost, &diffs);
+        try diff_funcs.cleanupSemantic(allocator, &diffs);
+        try diff_funcs.cleanupEfficiency(allocator, diff_edit_cost, &diffs);
     }
 
-    return patchMakeStringDiffs(MatchMaxContainer, allocator, patch_margin, text1, diffs);
+    return makeStringDiffs(MatchMaxContainer, allocator, patch_margin, text1, diffs);
 }
 
 ///Compute a list of patches to turn text1 into text2.
 ///text1 will be derived from the provided diffs.
-pub fn patchMakeDiffs(comptime MatchMaxContainer: type, allocator: Allocator, patch_margin: u16, diffs: []Diff) !PatchList {
-    const text1 = try diff_funcs.diffText1(allocator, diffs);
+pub fn makeDiffs(comptime MatchMaxContainer: type, allocator: Allocator, patch_margin: u16, diffs: []Diff) !PatchList {
+    const text1 = try diff_funcs.text1(allocator, diffs);
     defer allocator.free(text1);
-    return patchMakeStringDiffs(MatchMaxContainer, allocator, patch_margin, text1, diffs);
+    return makeStringDiffs(MatchMaxContainer, allocator, patch_margin, text1, diffs);
 }
 
 ///Compute a list of patches to turn text1 into text2.
 ///text2 is ignored, diffs are the delta between text1 and text2.
 ///Depricated, use patchStringDiffs
-pub fn patchMakeStringStringDiffs(comptime MatchMaxContainer: type, allocator: Allocator, patch_margin: u16, text1: [:0]const u8, text2: [:0]const u8, diffs: []Diff) !PatchList {
+pub fn makeStringStringDiffs(comptime MatchMaxContainer: type, allocator: Allocator, patch_margin: u16, text1: [:0]const u8, text2: [:0]const u8, diffs: []Diff) !PatchList {
     _ = text2;
-    return patchMakeStringDiffs(MatchMaxContainer, allocator, patch_margin, text1, diffs);
+    return makeStringDiffs(MatchMaxContainer, allocator, patch_margin, text1, diffs);
 }
 
 ///Compute a list of patches to turn text1 into text2.
 ///text2 is not provided, diffs are the delta between text1 and text2.
-pub fn patchMakeStringDiffs(comptime MatchMaxContainer: type, allocator: Allocator, patch_margin: u16, text1: [:0]const u8, diffs: []Diff) Allocator.Error!PatchList {
+pub fn makeStringDiffs(comptime MatchMaxContainer: type, allocator: Allocator, patch_margin: u16, text1: [:0]const u8, diffs: []Diff) Allocator.Error!PatchList {
     var patches = std.ArrayList(Patch).init(allocator);
     defer patches.deinit();
     if (diffs.len == 0) {
@@ -234,7 +234,7 @@ pub fn patchMakeStringDiffs(comptime MatchMaxContainer: type, allocator: Allocat
                 if (diff.text.len >= 2 * patch_margin) {
                     // Time for a new patch.
                     if (patch.diffs.items.len != 0) {
-                        try patchAddContext(MatchMaxContainer, allocator, patch_margin, &patch, prepatch_text.items);
+                        try addContext(MatchMaxContainer, allocator, patch_margin, &patch, prepatch_text.items);
                         try patches.append(patch);
                         patch.diffs.shrinkAndFree(allocator, patch.diffs.items.len);
 
@@ -261,7 +261,7 @@ pub fn patchMakeStringDiffs(comptime MatchMaxContainer: type, allocator: Allocat
     }
     // Pick up the leftover patch if not empty.
     if (patch.diffs.items.len != 0) {
-        try patchAddContext(MatchMaxContainer, allocator, patch_margin, &patch, prepatch_text.items);
+        try addContext(MatchMaxContainer, allocator, patch_margin, &patch, prepatch_text.items);
         patch.diffs.shrinkAndFree(allocator, patch.diffs.items.len);
         try patches.append(patch);
     } else {
@@ -272,7 +272,7 @@ pub fn patchMakeStringDiffs(comptime MatchMaxContainer: type, allocator: Allocat
 }
 
 ///Given an array of patches, return another array that is identical.
-pub fn patchDeepCopy(allocator: Allocator, patches: PatchList) Allocator.Error!PatchList {
+pub fn deepCopy(allocator: Allocator, patches: PatchList) Allocator.Error!PatchList {
     const patches_copy = try allocator.alloc(Patch, patches.items.len);
     errdefer allocator.free(patches_copy);
     for (patches.items, patches_copy) |patch, *patch_copy| {
@@ -289,7 +289,7 @@ pub fn patchDeepCopy(allocator: Allocator, patches: PatchList) Allocator.Error!P
 
 ///Merge a set of patches onto the text.  Return a patched text, as well
 ///as an array of true/false values indicating which patches were applied.
-pub fn patchApply(comptime MatchMaxContainer: type, allocator: Allocator, diff_timeout: f32, match_distance: u32, match_threshold: f32, patch_margin: u16, patch_delete_threshold: f32, patches: PatchList, text: [:0]const u8) (match_funcs.MatchError || Allocator.Error)!struct { []const u8, []bool } {
+pub fn apply(comptime MatchMaxContainer: type, allocator: Allocator, diff_timeout: f32, match_distance: u32, match_threshold: f32, patch_margin: u16, patch_delete_threshold: f32, patches: PatchList, text: [:0]const u8) (match_funcs.MatchError || Allocator.Error)!struct { []const u8, []bool } {
     const match_max_bits = @bitSizeOf(MatchMaxContainer);
 
     if (patches.items.len == 0) {
@@ -299,10 +299,10 @@ pub fn patchApply(comptime MatchMaxContainer: type, allocator: Allocator, diff_t
     }
 
     // Deep copy the patches so that no changes are made to originals.
-    var patchesCopy = try patchDeepCopy(allocator, patches);
+    var patchesCopy = try deepCopy(allocator, patches);
     defer patchesCopy.deinit();
 
-    const null_padding = try patchAddPadding(allocator, patch_margin, &patchesCopy);
+    const null_padding = try addPadding(allocator, patch_margin, &patchesCopy);
     defer allocator.free(null_padding);
 
     var working_text = try std.ArrayList(u8).initCapacity(allocator, text.len + 2 * null_padding.len);
@@ -312,7 +312,7 @@ pub fn patchApply(comptime MatchMaxContainer: type, allocator: Allocator, diff_t
     // try working_text.appendSlice(text);
     try working_text.appendSlice(null_padding);
 
-    try patchSplitMax(MatchMaxContainer, allocator, patch_margin, &patchesCopy);
+    try splitMax(MatchMaxContainer, allocator, patch_margin, &patchesCopy);
 
     var applied = try allocator.alloc(bool, patchesCopy.items.len);
     errdefer allocator.free(applied);
@@ -326,7 +326,7 @@ pub fn patchApply(comptime MatchMaxContainer: type, allocator: Allocator, diff_t
     for (patchesCopy.items) |patch| {
         const expected_loc: usize = @intCast(@as(isize, @intCast(patch.start2)) + delta);
 
-        const text1 = try diff_funcs.diffText1(allocator, patch.diffs.items);
+        const text1 = try diff_funcs.text1(allocator, patch.diffs.items);
         defer allocator.free(text1);
 
         var start_loc: ?usize = null;
@@ -334,16 +334,16 @@ pub fn patchApply(comptime MatchMaxContainer: type, allocator: Allocator, diff_t
         if (text1.len > match_max_bits) {
             // `patchSplitMax` will only provide an oversized pattern in the case of
             // a monster delete.
-            start_loc = try match_funcs.matchMain(MatchMaxContainer, allocator, match_distance, match_threshold, working_text.items, text1[0..match_max_bits], expected_loc);
+            start_loc = try match_funcs.main(MatchMaxContainer, allocator, match_distance, match_threshold, working_text.items, text1[0..match_max_bits], expected_loc);
             if (start_loc != null) {
-                end_loc = try match_funcs.matchMain(MatchMaxContainer, allocator, match_distance, match_threshold, working_text.items, text1[text1.len - match_max_bits ..], expected_loc + text1.len - match_max_bits);
+                end_loc = try match_funcs.main(MatchMaxContainer, allocator, match_distance, match_threshold, working_text.items, text1[text1.len - match_max_bits ..], expected_loc + text1.len - match_max_bits);
                 if (end_loc == null or start_loc.? >= end_loc.?) {
                     // Can't find valid trailing context.  Drop this patch.
                     start_loc = null;
                 }
             }
         } else {
-            start_loc = try match_funcs.matchMain(MatchMaxContainer, allocator, match_distance, match_threshold, working_text.items, text1, expected_loc);
+            start_loc = try match_funcs.main(MatchMaxContainer, allocator, match_distance, match_threshold, working_text.items, text1, expected_loc);
         }
         if (start_loc == null) {
             // No match found.  :(
@@ -364,26 +364,26 @@ pub fn patchApply(comptime MatchMaxContainer: type, allocator: Allocator, diff_t
 
             if (std.mem.eql(u8, text1, text2)) {
                 // Perfect match, just shove the Replacement text in.
-                const replacement = try diff_funcs.diffText2(allocator, patch.diffs.items);
+                const replacement = try diff_funcs.text2(allocator, patch.diffs.items);
                 defer allocator.free(replacement);
                 try working_text.replaceRange(start_loc.?, text1.len, replacement);
             } else {
                 // Imperfect match.  Run a diff to get a framework of equivalent indices.
-                var diffs = try diff_funcs.diffMainStringStringBool(allocator, diff_timeout, text1, text2, false);
+                var diffs = try diff_funcs.mainStringStringBool(allocator, diff_timeout, text1, text2, false);
                 defer allocator.free(diffs);
                 defer for (diffs) |*diff| diff.deinit(allocator);
 
                 if (text1.len > match_max_bits and
-                    @as(f64, @floatFromInt(diff_funcs.diffLevenshtein(diffs))) / @as(f64, @floatFromInt(text1.len)) > patch_delete_threshold)
+                    @as(f64, @floatFromInt(diff_funcs.levenshtein(diffs))) / @as(f64, @floatFromInt(text1.len)) > patch_delete_threshold)
                 {
                     // The end points match, but the content is unacceptably bad.
                     applied[x] = false;
                 } else {
-                    try diff_funcs.diffCleanupSemanticLossless(allocator, &diffs);
+                    try diff_funcs.cleanupSemanticLossless(allocator, &diffs);
                     var index1: usize = 0;
                     for (patch.diffs.items) |diff| {
                         if (diff.operation != .equal) blk: {
-                            const index2 = diff_funcs.diffXIndex(diffs, index1);
+                            const index2 = diff_funcs.xIndex(diffs, index1);
                             if (diff.operation == .insert) {
                                 // Insertion
                                 try working_text.insertSlice(start_loc.? + index2, diff.text);
@@ -392,7 +392,7 @@ pub fn patchApply(comptime MatchMaxContainer: type, allocator: Allocator, diff_t
                             std.debug.assert(diff.operation == .delete);
                             // Deletion
 
-                            const rem_len = diff_funcs.diffXIndex(diffs, index1 + diff.text.len);
+                            const rem_len = diff_funcs.xIndex(diffs, index1 + diff.text.len);
                             std.debug.assert(rem_len > index2);
                             working_text.replaceRangeAssumeCapacity(start_loc.? + index2, rem_len - index2, &.{});
                         }
@@ -414,7 +414,7 @@ pub fn patchApply(comptime MatchMaxContainer: type, allocator: Allocator, diff_t
 
 ///Add some padding on text start and end so that edges can match something.
 ///Intended to be called only from within `patchApply`.
-pub fn patchAddPadding(allocator: Allocator, patch_margin: u16, patches: *PatchList) Allocator.Error![:0]const u8 {
+pub fn addPadding(allocator: Allocator, patch_margin: u16, patches: *PatchList) Allocator.Error![:0]const u8 {
     const padding_length = patch_margin;
     const null_padding = try allocator.allocSentinel(u8, padding_length, 0);
     for (0..padding_length) |i| {
@@ -481,7 +481,7 @@ pub fn patchAddPadding(allocator: Allocator, patch_margin: u16, patches: *PatchL
 ///Look through the patches and break up any which are longer than the
 ///maximum limit of the match algorithm.
 ///Intended to be called only from within `patchApply`.
-pub fn patchSplitMax(comptime MatchMaxContainer: type, allocator: Allocator, patch_margin: u16, patches: *PatchList) !void {
+pub fn splitMax(comptime MatchMaxContainer: type, allocator: Allocator, patch_margin: u16, patches: *PatchList) !void {
     const patch_size = @bitSizeOf(MatchMaxContainer);
 
     var precontext = try std.ArrayList(u8).initCapacity(allocator, patch_margin);
@@ -576,7 +576,7 @@ pub fn patchSplitMax(comptime MatchMaxContainer: type, allocator: Allocator, pat
             }
             // Compute the head context for the next patch.
             {
-                const text2 = try diff_funcs.diffText2(allocator, patch.diffs.items);
+                const text2 = try diff_funcs.text2(allocator, patch.diffs.items);
                 defer allocator.free(text2);
 
                 precontext.clearRetainingCapacity(); // TODO: see if can be done with less allocs
@@ -588,7 +588,7 @@ pub fn patchSplitMax(comptime MatchMaxContainer: type, allocator: Allocator, pat
 
             postcontext = undefined;
             // Append the end context for this patch.
-            const dt1 = try diff_funcs.diffText1(allocator, big_patch.diffs.items);
+            const dt1 = try diff_funcs.text1(allocator, big_patch.diffs.items);
             defer allocator.free(dt1);
             if (dt1.len > patch_margin) {
                 postcontext = dt1[0..patch_margin];
@@ -627,7 +627,7 @@ pub fn patchSplitMax(comptime MatchMaxContainer: type, allocator: Allocator, pat
 }
 
 ///Take a list of patches and return a textual representation.
-pub fn patchToText(allocator: Allocator, patches: PatchList) ![:0]const u8 {
+pub fn toText(allocator: Allocator, patches: PatchList) ![:0]const u8 {
     var text = std.ArrayList(u8).init(allocator);
     defer text.deinit();
     const text_writer = text.writer();
@@ -638,7 +638,7 @@ pub fn patchToText(allocator: Allocator, patches: PatchList) ![:0]const u8 {
 }
 
 ///Parse a textual representation of patches and return a List of Patch objects.
-pub fn patchFromText(allocator: Allocator, textline: [:0]const u8) (PatchError || Allocator.Error)!PatchList {
+pub fn fromText(allocator: Allocator, textline: [:0]const u8) (Error || Allocator.Error)!PatchList {
     var patches = std.ArrayList(Patch).init(allocator);
     defer patches.deinit();
     errdefer for (patches.items) |*patch| patch.deinit(allocator);
@@ -651,7 +651,7 @@ pub fn patchFromText(allocator: Allocator, textline: [:0]const u8) (PatchError |
 
     var texts = std.mem.splitScalar(u8, textline, '\n');
     while (texts.next()) |text| {
-        const header = utils.matchPatchHeader(text) orelse return PatchError.InvalidPatchString;
+        const header = utils.matchPatchHeader(text) orelse return Error.InvalidPatchString;
 
         patch = try Patch.init(allocator, header[0], header[2], undefined, undefined);
         errdefer patch.deinit(allocator);

@@ -3,7 +3,7 @@ const utils = @import("utils.zig");
 const diff_funcs = @import("diff.zig");
 
 const Diff = @import("diff.zig").Diff;
-const DiffOperation = @import("diff.zig").DiffOperation;
+const DiffOperation = @import("diff.zig").Operation;
 
 const Allocator = std.mem.Allocator;
 
@@ -41,7 +41,7 @@ pub const LineArray = struct {
 
 ///Find the differences between two texts.  Simplifies the problem by
 ///stripping any common prefix or suffix off the texts before diffing.
-pub fn diffMainStringStringBoolTimeout(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, check_lines: bool, ns_time_limit: u64) ![]Diff {
+pub fn mainStringStringBoolTimeout(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, check_lines: bool, ns_time_limit: u64) ![]Diff {
     var timer = std.time.Timer.start() catch @panic("Timer not available");
 
     const t1_valid = std.unicode.utf8ValidateSlice(text1);
@@ -53,9 +53,9 @@ pub fn diffMainStringStringBoolTimeout(allocator: Allocator, diff_timeout: f32, 
     const t2 = if (t2_valid) text2 else try utils.decodeUtf8(allocator, text2);
     defer if (!t2_valid) allocator.free(t2);
 
-    return diffMainStringStringBoolTimeoutTimer(allocator, diff_timeout, t1, t2, check_lines, ns_time_limit, &timer);
+    return mainStringStringBoolTimeoutTimer(allocator, diff_timeout, t1, t2, check_lines, ns_time_limit, &timer);
 }
-fn diffMainStringStringBoolTimeoutTimer(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, check_lines: bool, ns_time_limit: u64, timer: *std.time.Timer) Allocator.Error![]Diff {
+fn mainStringStringBoolTimeoutTimer(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, check_lines: bool, ns_time_limit: u64, timer: *std.time.Timer) Allocator.Error![]Diff {
     var diffs = std.ArrayList(Diff).init(allocator);
     defer diffs.deinit();
     errdefer for (diffs.items) |*diff| diff.deinit(allocator);
@@ -78,7 +78,7 @@ fn diffMainStringStringBoolTimeoutTimer(allocator: Allocator, diff_timeout: f32,
 
     // Trim off common prefix (speedup).
     {
-        const common_length = diff_funcs.diffCommonPrefix(text1, text2);
+        const common_length = diff_funcs.commonPrefix(text1, text2);
         common_prefix = text1[0..common_length];
         text_chopped1 = text1[common_length..];
         text_chopped2 = text2[common_length..];
@@ -86,7 +86,7 @@ fn diffMainStringStringBoolTimeoutTimer(allocator: Allocator, diff_timeout: f32,
 
     // Trim off common suffix (speedup).
     {
-        const common_length = diff_funcs.diffCommonSuffix(text_chopped1, text_chopped2);
+        const common_length = diff_funcs.commonSuffix(text_chopped1, text_chopped2);
         common_suffix = text_chopped1[text_chopped1.len - common_length ..];
         text_chopped1 = text_chopped1[0 .. text_chopped1.len - common_length];
         text_chopped2 = text_chopped2[0 .. text_chopped2.len - common_length];
@@ -94,7 +94,7 @@ fn diffMainStringStringBoolTimeoutTimer(allocator: Allocator, diff_timeout: f32,
 
     // Compute the diff on the middle block.
     {
-        const computed_diffs = diffComputeTimer(allocator, diff_timeout, text_chopped1, text_chopped2, check_lines, ns_time_limit, timer) catch |e| switch (e) {
+        const computed_diffs = computeTimer(allocator, diff_timeout, text_chopped1, text_chopped2, check_lines, ns_time_limit, timer) catch |e| switch (e) {
             error.InvalidUtf8 => unreachable,
             else => return @as(Allocator.Error, @errorCast(e)),
         };
@@ -112,18 +112,18 @@ fn diffMainStringStringBoolTimeoutTimer(allocator: Allocator, diff_timeout: f32,
     }
 
     var res = try diffs.toOwnedSlice();
-    try diff_funcs.diffCleanupMerge(allocator, &res);
+    try diff_funcs.cleanupMerge(allocator, &res);
 
     return res;
 }
 
 ///Find the differences between two texts.  Assumes that the texts do not
 ///have any common prefix or suffix.
-pub fn diffCompute(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, checklines: bool, ns_time_limit: u64) ![]Diff {
+pub fn compute(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, checklines: bool, ns_time_limit: u64) ![]Diff {
     var timer = std.time.Timer.start() catch @panic("Timer not available");
-    return diffComputeTimer(allocator, diff_timeout, text1, text2, checklines, ns_time_limit, &timer);
+    return computeTimer(allocator, diff_timeout, text1, text2, checklines, ns_time_limit, &timer);
 }
-fn diffComputeTimer(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, checklines: bool, ns_time_limit: u64, timer: *std.time.Timer) (error{InvalidUtf8} || Allocator.Error)![]Diff {
+fn computeTimer(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, checklines: bool, ns_time_limit: u64, timer: *std.time.Timer) (error{InvalidUtf8} || Allocator.Error)![]Diff {
     switch (@import("builtin").mode) {
         .Debug, .ReleaseSafe => if (!std.unicode.utf8ValidateSlice(text1) or !std.unicode.utf8ValidateSlice(text2)) return error.InvalidUtf8,
         else => {},
@@ -169,13 +169,13 @@ fn diffComputeTimer(allocator: Allocator, diff_timeout: f32, text1: []const u8, 
     }
 
     // Check to see if the problem can be split in two.
-    if (try diffHalfMatch(allocator, diff_timeout, text1, text2)) |hm| {
+    if (try halfMatch(allocator, diff_timeout, text1, text2)) |hm| {
         errdefer allocator.free(hm.common);
         // A half-match was found, sort out the return data.
         // Send both pairs off for separate processing.
-        const diffs_a = try diffMainStringStringBoolTimeoutTimer(allocator, diff_timeout, hm.text1_prefix, hm.text2_prefix, checklines, ns_time_limit, timer);
+        const diffs_a = try mainStringStringBoolTimeoutTimer(allocator, diff_timeout, hm.text1_prefix, hm.text2_prefix, checklines, ns_time_limit, timer);
         defer allocator.free(diffs_a);
-        const diffs_b = try diffMainStringStringBoolTimeoutTimer(allocator, diff_timeout, hm.text1_suffix, hm.text2_suffix, checklines, ns_time_limit, timer);
+        const diffs_b = try mainStringStringBoolTimeoutTimer(allocator, diff_timeout, hm.text1_suffix, hm.text2_suffix, checklines, ns_time_limit, timer);
         defer allocator.free(diffs_b);
 
         // Merge the results.
@@ -188,19 +188,19 @@ fn diffComputeTimer(allocator: Allocator, diff_timeout: f32, text1: []const u8, 
 
     // Perform a real diff.
     if (checklines and text1.len > 100 and text2.len > 100) {
-        return diffLineModeTimer(allocator, diff_timeout, text1, text2, ns_time_limit, timer);
+        return lineModeTimer(allocator, diff_timeout, text1, text2, ns_time_limit, timer);
     }
-    return diffBisectTimer(allocator, diff_timeout, text1, text2, ns_time_limit, timer);
+    return bisectTimer(allocator, diff_timeout, text1, text2, ns_time_limit, timer);
 }
 
 ///Do a quick line-level diff on both strings, then rediff the parts for
 ///greater accuracy.
 ///This speedup can produce non-minimal diffs.
-pub fn diffLineMode(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, ns_time_limit: u64) ![]Diff {
+pub fn lineMode(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, ns_time_limit: u64) ![]Diff {
     var timer = std.time.Timer.start() catch @panic("Timer not available");
-    return diffLineModeTimer(allocator, diff_timeout, text1, text2, ns_time_limit, &timer);
+    return lineModeTimer(allocator, diff_timeout, text1, text2, ns_time_limit, &timer);
 }
-fn diffLineModeTimer(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, ns_time_limit: u64, timer: *std.time.Timer) ![]Diff {
+fn lineModeTimer(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, ns_time_limit: u64, timer: *std.time.Timer) ![]Diff {
     var diffs: []Diff = undefined;
 
     {
@@ -211,19 +211,19 @@ fn diffLineModeTimer(allocator: Allocator, diff_timeout: f32, text1: []const u8,
         var t2 = try utils.decodeUtf8(allocator, text2);
         defer allocator.free(t2);
 
-        var linearray = try diffLinesToChars(allocator, &t1, &t2);
+        var linearray = try linesToChars(allocator, &t1, &t2);
         defer linearray.deinit();
 
-        diffs = try diffMainStringStringBoolTimeoutTimer(allocator, diff_timeout, t1, t2, false, ns_time_limit, timer);
+        diffs = try mainStringStringBoolTimeoutTimer(allocator, diff_timeout, t1, t2, false, ns_time_limit, timer);
         errdefer {
             for (diffs) |*diff| diff.deinit(allocator);
             allocator.free(diffs);
         }
 
         // Convert the diff back to original text.
-        try diffCharsToLinesLineArray(allocator, &diffs, linearray);
+        try charsToLinesLineArray(allocator, &diffs, linearray);
         // Eliminate freak matches (e.g. blank lines)
-        try diff_funcs.diffCleanupSemantic(allocator, &diffs);
+        try diff_funcs.cleanupSemantic(allocator, &diffs);
     }
 
     // Rediff any replacement blocks. this time charecter-by-charecter.
@@ -264,7 +264,7 @@ fn diffLineModeTimer(allocator: Allocator, diff_timeout: f32, text1: []const u8,
                     try diff_list.replaceRange(del_idx, del_len, &.{});
                     pointer = del_idx;
 
-                    const a = try diffMainStringStringBoolTimeoutTimer(allocator, diff_timeout, text_delete.items, text_insert.items, false, ns_time_limit, timer);
+                    const a = try mainStringStringBoolTimeoutTimer(allocator, diff_timeout, text_delete.items, text_insert.items, false, ns_time_limit, timer);
                     defer allocator.free(a);
                     errdefer for (a) |*d| d.deinit(allocator);
 
@@ -289,11 +289,11 @@ fn diffLineModeTimer(allocator: Allocator, diff_timeout: f32, text1: []const u8,
 ///Find the 'middle snake' of a diff, split the problem in two
 ///and return the recursively constructed diff.
 ///See Myers 1986 paper: An O(ND) Difference Algorithm and Its Variations.
-pub fn diffBisect(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, ns_time_limit: u64) ![]Diff {
+pub fn bisect(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, ns_time_limit: u64) ![]Diff {
     var timer = std.time.Timer.start() catch @panic("Timer not available");
-    return diffBisectTimer(allocator, diff_timeout, text1, text2, ns_time_limit, &timer);
+    return bisectTimer(allocator, diff_timeout, text1, text2, ns_time_limit, &timer);
 }
-fn diffBisectTimer(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, ns_time_limit: u64, timer: *std.time.Timer) (error{InvalidUtf8} || Allocator.Error)![]Diff {
+fn bisectTimer(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, ns_time_limit: u64, timer: *std.time.Timer) (error{InvalidUtf8} || Allocator.Error)![]Diff {
     // TODO: redo this function without all the casting and isizes
     // TODO: operate on unicode (char) level rather then byte level
     const t1_valid = std.unicode.utf8ValidateSlice(text1);
@@ -371,7 +371,7 @@ fn diffBisectTimer(allocator: Allocator, diff_timeout: f32, text1: []const u8, t
                     const x2 = @as(isize, @intCast(text1_len)) - v2[@intCast(k2_offset)];
                     if (x1 >= x2) {
                         // Overlap detected.
-                        return diffBisectSplitTimer(allocator, diff_timeout, t1, t2, @intCast(x1), @intCast(y1), ns_time_limit, timer) catch |e| switch (e) {
+                        return bisectSplitTimer(allocator, diff_timeout, t1, t2, @intCast(x1), @intCast(y1), ns_time_limit, timer) catch |e| switch (e) {
                             error.OutOfBounds => unreachable,
                             else => @as(error{ OutOfMemory, InvalidUtf8 }, @errorCast(e)),
                         };
@@ -411,7 +411,7 @@ fn diffBisectTimer(allocator: Allocator, diff_timeout: f32, text1: []const u8, t
                     x2 = @intCast(text1_len - @as(usize, @intCast(x2)));
                     if (x1 >= x2) {
                         // Overlap detected
-                        return diffBisectSplitTimer(allocator, diff_timeout, t1, t2, @intCast(x1), @intCast(y1), ns_time_limit, timer) catch |e| switch (e) {
+                        return bisectSplitTimer(allocator, diff_timeout, t1, t2, @intCast(x1), @intCast(y1), ns_time_limit, timer) catch |e| switch (e) {
                             error.OutOfBounds => unreachable,
                             else => @as(error{ OutOfMemory, InvalidUtf8 }, @errorCast(e)),
                         };
@@ -434,11 +434,11 @@ fn diffBisectTimer(allocator: Allocator, diff_timeout: f32, text1: []const u8, t
 
 ///Given the location of the 'middle snake', split the diff in two parts
 ///and recurse.
-pub fn diffBisectSplit(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, x: usize, y: usize, ns_time_limit: u64) ![]Diff {
+pub fn bisectSplit(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, x: usize, y: usize, ns_time_limit: u64) ![]Diff {
     var timer = std.time.Timer.start() catch @panic("Timer not available");
-    return diffBisectSplitTimer(allocator, diff_timeout, text1, text2, x, y, ns_time_limit, &timer);
+    return bisectSplitTimer(allocator, diff_timeout, text1, text2, x, y, ns_time_limit, &timer);
 }
-fn diffBisectSplitTimer(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, x: usize, y: usize, ns_time_limit: u64, timer: *std.time.Timer) (error{ InvalidUtf8, OutOfBounds } || Allocator.Error)![]Diff {
+fn bisectSplitTimer(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, x: usize, y: usize, ns_time_limit: u64, timer: *std.time.Timer) (error{ InvalidUtf8, OutOfBounds } || Allocator.Error)![]Diff {
     const xn = utils.utf8IdxOfX(text1, x);
     const yn = utils.utf8IdxOfX(text2, y);
     if (xn == null or yn == null) return error.OutOfBounds;
@@ -448,11 +448,11 @@ fn diffBisectSplitTimer(allocator: Allocator, diff_timeout: f32, text1: []const 
     const text1b = text1[xn.?..];
     const text2b = text2[yn.?..];
 
-    var diffs1 = try diffMainStringStringBoolTimeoutTimer(allocator, diff_timeout, text1a, text2a, false, ns_time_limit, timer);
+    var diffs1 = try mainStringStringBoolTimeoutTimer(allocator, diff_timeout, text1a, text2a, false, ns_time_limit, timer);
     errdefer allocator.free(diffs1);
     errdefer for (diffs1) |*diff| diff.deinit(allocator);
 
-    const diffs2 = try diffMainStringStringBoolTimeoutTimer(allocator, diff_timeout, text1b, text2b, false, ns_time_limit, timer);
+    const diffs2 = try mainStringStringBoolTimeoutTimer(allocator, diff_timeout, text1b, text2b, false, ns_time_limit, timer);
     defer allocator.free(diffs2);
     errdefer for (diffs2) |*diff| diff.deinit(allocator);
 
@@ -464,7 +464,7 @@ fn diffBisectSplitTimer(allocator: Allocator, diff_timeout: f32, text1: []const 
 
 ///Split two texts into a list of strings.  Reduce the texts to a string of
 ///hashes where each Unicode character represents one line.
-pub fn diffLinesToChars(allocator: Allocator, text1: *[]u8, text2: *[]u8) Allocator.Error!LineArray {
+pub fn linesToChars(allocator: Allocator, text1: *[]u8, text2: *[]u8) Allocator.Error!LineArray {
     var line_array = try LineArray.init(allocator);
     errdefer line_array.deinit();
     var line_hash = std.StringHashMap(usize).init(allocator);
@@ -476,15 +476,15 @@ pub fn diffLinesToChars(allocator: Allocator, text1: *[]u8, text2: *[]u8) Alloca
     // So we'll insert a junk entry to avoid generating a null character.
     try line_array.append("");
 
-    try diffLinesToCharsMunge(allocator, text1, &line_array, &line_hash);
-    try diffLinesToCharsMunge(allocator, text2, &line_array, &line_hash);
+    try linesToCharsMunge(allocator, text1, &line_array, &line_hash);
+    try linesToCharsMunge(allocator, text2, &line_array, &line_hash);
 
     return line_array;
 }
 
 ///Split a text into a list of strings.  Reduce the texts to a string of
 ///hashes where each Unicode character represents one line.
-pub fn diffLinesToCharsMunge(allocator: Allocator, text_ref: *[]u8, line_array: *LineArray, line_hash: *std.StringHashMap(usize)) Allocator.Error!void {
+pub fn linesToCharsMunge(allocator: Allocator, text_ref: *[]u8, line_array: *LineArray, line_hash: *std.StringHashMap(usize)) Allocator.Error!void {
     var text = text_ref.*;
     // changing the implementation to modify the string
     var lines = std.mem.splitScalar(u8, text, '\n');
@@ -519,12 +519,12 @@ pub fn diffLinesToCharsMunge(allocator: Allocator, text_ref: *[]u8, line_array: 
     }
     text_ref.* = text;
 }
-pub fn diffCharsToLinesLineArray(allocator: Allocator, diffs: *[]Diff, line_array: LineArray) Allocator.Error!void {
-    return diffCharsToLines(allocator, diffs, line_array.items.*);
+pub fn charsToLinesLineArray(allocator: Allocator, diffs: *[]Diff, line_array: LineArray) Allocator.Error!void {
+    return charsToLines(allocator, diffs, line_array.items.*);
 }
 
 ///Rehydrate the text in a diff from a string of line hashes to real lines of text.
-pub fn diffCharsToLines(allocator: Allocator, diffs: *[]Diff, line_array: [][]const u8) Allocator.Error!void {
+pub fn charsToLines(allocator: Allocator, diffs: *[]Diff, line_array: [][]const u8) Allocator.Error!void {
     var text = std.ArrayList(u21).init(allocator);
     defer text.deinit();
     for (diffs.*) |*diff| {
@@ -553,7 +553,7 @@ pub fn diffCharsToLines(allocator: Allocator, diffs: *[]Diff, line_array: [][]co
 }
 
 ///Determine if the suffix of one string is the prefix of another.
-pub fn diffCommonOverlap(text1: []const u8, text2: []const u8) usize {
+pub fn commonOverlap(text1: []const u8, text2: []const u8) usize {
     if (text1.len == 0 or text2.len == 0) return 0;
     var t1 = text1;
     var t2 = text2;
@@ -594,7 +594,7 @@ pub fn diffCommonOverlap(text1: []const u8, text2: []const u8) usize {
 
 ///Do the two texts share a substring which is at least half the length of the longer text?
 ///This speedup can produce non-minimal diffs.
-pub fn diffHalfMatch(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8) Allocator.Error!?struct {
+pub fn halfMatch(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8) Allocator.Error!?struct {
     text1_prefix: []const u8,
     text1_suffix: []const u8,
     text2_prefix: []const u8,
@@ -614,10 +614,10 @@ pub fn diffHalfMatch(allocator: Allocator, diff_timeout: f32, text1: []const u8,
     }
 
     // First check if the second quarter is the seed for a half-match.
-    var hm1 = try diffHalfMatchI(allocator, longtext, shorttext, (longtext.len + 3) / 4);
+    var hm1 = try halfMatchI(allocator, longtext, shorttext, (longtext.len + 3) / 4);
     errdefer if (hm1) |hm| allocator.free(hm.common);
     // Check again based on the third quarter.
-    var hm2 = try diffHalfMatchI(allocator, longtext, shorttext, (longtext.len + 1) / 2);
+    var hm2 = try halfMatchI(allocator, longtext, shorttext, (longtext.len + 1) / 2);
     errdefer if (hm2) |hm| allocator.free(hm.common);
 
     if (hm1 == null and hm2 == null) return null;
@@ -649,7 +649,7 @@ pub fn diffHalfMatch(allocator: Allocator, diff_timeout: f32, text1: []const u8,
 
 ///Does a substring of shorttext exist within longtext such that the
 ///substring is at least half the length of longtext?
-pub fn diffHalfMatchI(allocator: Allocator, longtext: []const u8, shorttext: []const u8, i: usize) Allocator.Error!?struct {
+pub fn halfMatchI(allocator: Allocator, longtext: []const u8, shorttext: []const u8, i: usize) Allocator.Error!?struct {
     longtext_prefix: []const u8,
     longtext_suffix: []const u8,
     shorttext_prefix: []const u8,
@@ -670,8 +670,8 @@ pub fn diffHalfMatchI(allocator: Allocator, longtext: []const u8, shorttext: []c
     var j_p: ?usize = null;
     while (std.mem.indexOfPos(u8, shorttext, if (j_p) |j| j + 1 else 0, seed)) |j| {
         j_p = j;
-        const prefix_length = diff_funcs.diffCommonPrefix(longtext[i..], shorttext[j..]);
-        const suffix_length = diff_funcs.diffCommonSuffix(longtext[0..i], shorttext[0..j]);
+        const prefix_length = diff_funcs.commonPrefix(longtext[i..], shorttext[j..]);
+        const suffix_length = diff_funcs.commonSuffix(longtext[0..i], shorttext[0..j]);
         if (best_common_len < suffix_length + prefix_length) {
             best_common_a = shorttext[j - suffix_length .. j];
             best_common_b = shorttext[j .. j + prefix_length];
@@ -701,7 +701,7 @@ pub fn diffHalfMatchI(allocator: Allocator, longtext: []const u8, shorttext: []c
 ///Given two strings, compute a score representing whether the internal
 ///boundary falls on logical boundaries.
 ///Scores range from 6 (best) to 0 (worst).
-pub fn diffCleanupSemanticScore(one: []const u8, two: []const u8) usize {
+pub fn cleanupSemanticScore(one: []const u8, two: []const u8) usize {
     if (one.len == 0 or two.len == 0) {
         // Edges are the best.
         return 6;

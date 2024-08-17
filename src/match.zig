@@ -11,7 +11,7 @@ pub const MatchError = error{
 
 ///Locate the best instance of 'pattern' in 'text' near 'loc'.
 ///Returns null if no match found.
-pub fn matchMain(comptime MatchMaxContainer: type, allocator: Allocator, match_distance: u32, match_threshold: f32, text: []const u8, pattern: []const u8, loc: usize) (MatchError || Allocator.Error)!?usize {
+pub fn main(comptime MatchMaxContainer: type, allocator: Allocator, match_distance: u32, match_threshold: f32, text: []const u8, pattern: []const u8, loc: usize) (MatchError || Allocator.Error)!?usize {
     const index = @min(loc, text.len); // max with 0 is not needed since its unsigned
 
     if (std.mem.eql(u8, text, pattern)) {
@@ -25,12 +25,12 @@ pub fn matchMain(comptime MatchMaxContainer: type, allocator: Allocator, match_d
         return @intCast(index);
     }
     // do fuzzy compare
-    return matchBitap(MatchMaxContainer, allocator, match_distance, match_threshold, text, pattern, index);
+    return bitap(MatchMaxContainer, allocator, match_distance, match_threshold, text, pattern, index);
 }
 
 ///Locate the best instance of 'pattern' in 'text' near 'loc' using the
 ///Bitap algorithm.  Returns null if no match found.
-pub fn matchBitap(comptime MatchMaxContainer: type, allocator: Allocator, match_distance: u32, match_threshold: f32, text: []const u8, pattern: []const u8, loc: usize) (MatchError || Allocator.Error)!?usize {
+pub fn bitap(comptime MatchMaxContainer: type, allocator: Allocator, match_distance: u32, match_threshold: f32, text: []const u8, pattern: []const u8, loc: usize) (MatchError || Allocator.Error)!?usize {
     const match_max_bits = @bitSizeOf(MatchMaxContainer);
     if (!(match_max_bits == 0 or pattern.len <= match_max_bits)) {
         return MatchError.PatternTooLong;
@@ -43,10 +43,10 @@ pub fn matchBitap(comptime MatchMaxContainer: type, allocator: Allocator, match_
     var score_threshold: f64 = @floatCast(match_threshold);
     // Is there a nearby exact match? (speedup)
     if (std.mem.indexOfPos(u8, text, loc, pattern)) |idx_best_loc| {
-        score_threshold = @min(score_threshold, MatchPrivate.matchBitapScore(match_distance, 0, @intCast(idx_best_loc), loc, pattern));
+        score_threshold = @min(score_threshold, MatchPrivate.bitapScore(match_distance, 0, @intCast(idx_best_loc), loc, pattern));
         // What about in the other direction? (speedup)
         if (std.mem.lastIndexOf(u8, text, pattern)) |last_best_loc| {
-            score_threshold = @min(score_threshold, MatchPrivate.matchBitapScore(match_distance, 0, @intCast(last_best_loc), loc, pattern));
+            score_threshold = @min(score_threshold, MatchPrivate.bitapScore(match_distance, 0, @intCast(last_best_loc), loc, pattern));
         }
     }
 
@@ -69,7 +69,7 @@ pub fn matchBitap(comptime MatchMaxContainer: type, allocator: Allocator, match_
         bin_min = 0;
         bin_mid = bin_max;
         while (bin_min < bin_mid) {
-            if (MatchPrivate.matchBitapScore(match_distance, @intCast(d), loc + bin_mid, loc, pattern) <= score_threshold) {
+            if (MatchPrivate.bitapScore(match_distance, @intCast(d), loc + bin_mid, loc, pattern) <= score_threshold) {
                 bin_min = bin_mid;
             } else {
                 bin_max = bin_mid;
@@ -103,7 +103,7 @@ pub fn matchBitap(comptime MatchMaxContainer: type, allocator: Allocator, match_
                 rd[j] = ((rd[j + 1] << 1) | 1) & char_match | (((last_rd[j + 1] | last_rd[j]) << 1) | 1) | last_rd[j + 1];
             }
             if ((rd[j] & match_mask) != 0) {
-                const score = MatchPrivate.matchBitapScore(match_distance, @intCast(d), j - 1, loc, pattern);
+                const score = MatchPrivate.bitapScore(match_distance, @intCast(d), j - 1, loc, pattern);
                 // this match will most likely be better then any existing match, but double check
                 if (score <= score_threshold) {
                     score_threshold = score;
@@ -118,7 +118,7 @@ pub fn matchBitap(comptime MatchMaxContainer: type, allocator: Allocator, match_
                 }
             }
         }
-        if (MatchPrivate.matchBitapScore(match_distance, @intCast(d + 1), loc, loc, pattern) > score_threshold) {
+        if (MatchPrivate.bitapScore(match_distance, @intCast(d + 1), loc, loc, pattern) > score_threshold) {
             // no hope for a better match at greater error levels
             break;
         }
