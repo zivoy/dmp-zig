@@ -3,10 +3,12 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{
-        // .preferred_optimize_mode = .ReleaseSafe,
+        .preferred_optimize_mode = .ReleaseSafe,
     });
 
-    const wasm = target.result.cpu.arch.isWasm();
+    const dynamic = b.option(bool, "dynamic", "build lib as a dynamic lib");
+
+    const wasm = target.result.cpu.arch.isWasm() and target.result.os.tag == .freestanding;
     const options = .{
         .name = "dmp-zig",
         .root_source_file = b.path("src/lib.zig"),
@@ -14,7 +16,9 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .link_libc = !wasm,
     };
-    const lib = if (wasm) b.addExecutable(options) else b.addStaticLibrary(options);
+    const lib = if (wasm)
+        b.addExecutable(options)
+    else if (dynamic == true) b.addSharedLibrary(options) else b.addStaticLibrary(options);
     if (wasm) {
         lib.root_module.export_symbol_names = exports;
         lib.entry = .disabled;
