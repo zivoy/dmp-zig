@@ -11,13 +11,69 @@ fn encodeURIValid(chr: u8) bool {
     };
 }
 
-// TODO: add utf8 validation vefore this is used
-pub fn utf8CountCodepointsPanic(text: []const u8) usize {
-    return std.unicode.utf8CountCodepoints(text) catch |err| {
-        var buf: [128]u8 = undefined;
-        @panic(std.fmt.bufPrint(&buf, "error counting codepoints: {s}", .{@errorName(err)}) catch "codepoint count format err");
+pub fn utf8IdxOfX(text: []const u8, x: usize) ?usize {
+    std.debug.assert(std.unicode.utf8ValidateSlice(text));
+    var itr = std.unicode.Utf8View.initUnchecked(text).iterator();
+    for (0..x) |_| {
+        _ = itr.nextCodepointSlice() orelse return null;
+    }
+    return itr.i;
+}
+
+///taking a potentially invalid utf8 string return new valid string
+pub fn decodeUtf8(allocator: std.mem.Allocator, text: []const u8) std.mem.Allocator.Error![]u8 {
+    var array_list = try std.ArrayList(u8).initCapacity(allocator, text.len);
+    defer array_list.deinit();
+    try std.unicode.fmtUtf8(text).format(undefined, undefined, array_list.writer());
+    return array_list.toOwnedSlice();
+}
+
+pub fn initUtf8BackwardsIterator(text: []const u8) Utf8BackwardsIterator {
+    return .{
+        .bytes = text,
+        .i = text.len,
     };
 }
+
+pub const Utf8BackwardsIterator = struct {
+    bytes: []const u8,
+    i: usize,
+
+    pub fn nextCodepointSlice(it: *Utf8BackwardsIterator) ?[]const u8 {
+        if (it.i == 0) {
+            return null;
+        }
+
+        while (it.i > 0 and it.bytes[it.i - 1] & 0xC0 == 0x80) : (it.i -= 1) {
+            if (it.i == 0) break;
+        }
+        it.i -= 1;
+
+        const cp_len = std.unicode.utf8ByteSequenceLength(it.bytes[it.i]) catch unreachable;
+        return it.bytes[it.i .. it.i + cp_len];
+    }
+
+    pub fn nextCodepoint(it: *Utf8BackwardsIterator) ?u21 {
+        const slice = it.nextCodepointSlice() orelse return null;
+        return std.unicode.utf8Decode(slice) catch unreachable;
+    }
+
+    /// Look ahead at the next n codepoints without advancing the iterator.
+    /// If fewer than n codepoints are available, then return the remainder of the string.
+    pub fn peek(it: *Utf8BackwardsIterator, n: usize) []const u8 {
+        const original_i = it.i;
+        defer it.i = original_i;
+
+        var start_ix = original_i;
+        var found: usize = 0;
+        while (found < n) : (found += 1) {
+            const next_codepoint = it.nextCodepointSlice() orelse return it.bytes[0..original_i];
+            start_ix -= next_codepoint.len;
+        }
+
+        return it.bytes[start_ix..original_i];
+    }
+};
 
 pub fn getIdxOrNull(comptime T: type, arrayList: std.ArrayList(T), idx: usize) ?T {
     if (idx >= arrayList.items.len) return null;
@@ -242,4 +298,36 @@ test "blank line end regex" {
     try testing.expect(!blankLineEnd("something random"));
     try testing.expect(blankLineEnd("something random\n\n"));
     try testing.expect(blankLineEnd("something random\r\n\r\n"));
+}
+
+test "unicode count loc" {
+    try testing.expectEqual(2, utf8IdxOfX("abcd", 2));
+    try testing.expectEqual(0, utf8IdxOfX("abcd", 0));
+    // try testing.expectEqual(error.InvalidUtf8, utf8IdxOfX("\xe0\xe5", 0));
+    try testing.expectEqual(null, utf8IdxOfX("abcd", 10));
+    try testing.expectEqual(4, utf8IdxOfX("abcd", 4));
+    try testing.expectEqual(null, utf8IdxOfX("abcd", 5));
+
+    const uni_str = "a✓bcd";
+    const idx = utf8IdxOfX(uni_str, 2);
+    try testing.expectEqual(4, idx);
+    try testing.expectEqualStrings("bcd", uni_str[idx.?..]);
+}
+
+test "backwards iterator" {
+    const str = "Hello, 世界";
+    var itr = initUtf8BackwardsIterator(str);
+    try testing.expectEqualStrings("o, 世界", itr.peek(5));
+    try testing.expectEqualStrings("界", itr.nextCodepointSlice().?);
+    try testing.expectEqual(19990, itr.nextCodepoint().?);
+    _ = itr.nextCodepointSlice();
+    _ = itr.nextCodepointSlice();
+    try testing.expectEqualStrings("Hello", itr.peek(10));
+    _ = itr.nextCodepointSlice();
+    _ = itr.nextCodepointSlice();
+    _ = itr.nextCodepointSlice();
+    try testing.expectEqual('e', itr.nextCodepoint().?);
+    try testing.expectEqualStrings("H", itr.nextCodepointSlice().?);
+    try testing.expectEqual(null, itr.nextCodepointSlice());
+    try testing.expectEqualStrings("", itr.peek(1));
 }

@@ -43,12 +43,25 @@ pub const LineArray = struct {
 ///stripping any common prefix or suffix off the texts before diffing.
 pub fn diffMainStringStringBoolTimeout(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, check_lines: bool, ns_time_limit: u64) ![]Diff {
     var timer = std.time.Timer.start() catch @panic("Timer not available");
-    return diffMainStringStringBoolTimeoutTimer(allocator, diff_timeout, text1, text2, check_lines, ns_time_limit, &timer);
+
+    const t1_valid = std.unicode.utf8ValidateSlice(text1);
+    const t2_valid = std.unicode.utf8ValidateSlice(text2);
+
+    const t1 = if (t1_valid) text1 else try utils.decodeUtf8(allocator, text1);
+    defer if (!t1_valid) allocator.free(t1);
+
+    const t2 = if (t2_valid) text2 else try utils.decodeUtf8(allocator, text2);
+    defer if (!t2_valid) allocator.free(t2);
+
+    return diffMainStringStringBoolTimeoutTimer(allocator, diff_timeout, t1, t2, check_lines, ns_time_limit, &timer);
 }
 fn diffMainStringStringBoolTimeoutTimer(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, check_lines: bool, ns_time_limit: u64, timer: *std.time.Timer) Allocator.Error![]Diff {
     var diffs = std.ArrayList(Diff).init(allocator);
     defer diffs.deinit();
     errdefer for (diffs.items) |*diff| diff.deinit(allocator);
+
+    std.debug.assert(std.unicode.utf8ValidateSlice(text1));
+    std.debug.assert(std.unicode.utf8ValidateSlice(text2));
 
     // Check for equality (speedup).
     if (std.mem.eql(u8, text1, text2)) {
@@ -81,7 +94,10 @@ fn diffMainStringStringBoolTimeoutTimer(allocator: Allocator, diff_timeout: f32,
 
     // Compute the diff on the middle block.
     {
-        const computed_diffs = try diffComputeTimer(allocator, diff_timeout, text_chopped1, text_chopped2, check_lines, ns_time_limit, timer);
+        const computed_diffs = diffComputeTimer(allocator, diff_timeout, text_chopped1, text_chopped2, check_lines, ns_time_limit, timer) catch |e| switch (e) {
+            error.InvalidUtf8 => unreachable,
+            else => return @as(Allocator.Error, @errorCast(e)),
+        };
         defer allocator.free(computed_diffs);
         errdefer for (computed_diffs) |*diff| diff.deinit(allocator);
         try diffs.appendSlice(computed_diffs);
@@ -107,8 +123,15 @@ pub fn diffCompute(allocator: Allocator, diff_timeout: f32, text1: []const u8, t
     var timer = std.time.Timer.start() catch @panic("Timer not available");
     return diffComputeTimer(allocator, diff_timeout, text1, text2, checklines, ns_time_limit, &timer);
 }
-fn diffComputeTimer(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, checklines: bool, ns_time_limit: u64, timer: *std.time.Timer) Allocator.Error![]Diff {
-    // TODO: these need to operate on utf8 chars
+fn diffComputeTimer(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, checklines: bool, ns_time_limit: u64, timer: *std.time.Timer) (error{InvalidUtf8} || Allocator.Error)![]Diff {
+    switch (@import("builtin").mode) {
+        .Debug, .ReleaseSafe => if (!std.unicode.utf8ValidateSlice(text1) or !std.unicode.utf8ValidateSlice(text2)) return error.InvalidUtf8,
+        else => {},
+    }
+
+    std.debug.assert(std.unicode.utf8ValidateSlice(text1));
+    std.debug.assert(std.unicode.utf8ValidateSlice(text2));
+
     var diffs = std.ArrayList(Diff).init(allocator);
     defer diffs.deinit();
     errdefer for (diffs.items) |*diff| diff.deinit(allocator);
@@ -178,19 +201,15 @@ pub fn diffLineMode(allocator: Allocator, diff_timeout: f32, text1: []const u8, 
     return diffLineModeTimer(allocator, diff_timeout, text1, text2, ns_time_limit, &timer);
 }
 fn diffLineModeTimer(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, ns_time_limit: u64, timer: *std.time.Timer) ![]Diff {
-    // TODO: operate on unicode (char) level rather then byte level
-
     var diffs: []Diff = undefined;
 
     {
         // Scan the text on a line-by-line basis first.
-        var t1 = try allocator.alloc(u8, text1.len);
+        var t1 = try utils.decodeUtf8(allocator, text1);
         defer allocator.free(t1);
-        std.mem.copyForwards(u8, t1, text1);
 
-        var t2 = try allocator.alloc(u8, text2.len);
+        var t2 = try utils.decodeUtf8(allocator, text2);
         defer allocator.free(t2);
-        std.mem.copyForwards(u8, t2, text2);
 
         var linearray = try diffLinesToChars(allocator, &t1, &t2);
         defer linearray.deinit();
@@ -274,11 +293,23 @@ pub fn diffBisect(allocator: Allocator, diff_timeout: f32, text1: []const u8, te
     var timer = std.time.Timer.start() catch @panic("Timer not available");
     return diffBisectTimer(allocator, diff_timeout, text1, text2, ns_time_limit, &timer);
 }
-fn diffBisectTimer(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, ns_time_limit: u64, timer: *std.time.Timer) Allocator.Error![]Diff {
-    // NOTE: chceck to see if there is any speed diffrence betweenn just getting the len and caching it in a var
+fn diffBisectTimer(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, ns_time_limit: u64, timer: *std.time.Timer) (error{InvalidUtf8} || Allocator.Error)![]Diff {
     // TODO: redo this function without all the casting and isizes
     // TODO: operate on unicode (char) level rather then byte level
-    const max_d: isize = @intCast((text1.len + text2.len + 1) / 2);
+    const t1_valid = std.unicode.utf8ValidateSlice(text1);
+    const t2_valid = std.unicode.utf8ValidateSlice(text2);
+
+    // NOTE: this makes it silently error and replace the invalid utf8 rather then noping out
+    const t1 = if (t1_valid) text1 else try utils.decodeUtf8(allocator, text1);
+    defer if (!t1_valid) allocator.free(t1);
+
+    const t2 = if (t2_valid) text2 else try utils.decodeUtf8(allocator, text2);
+    defer if (!t2_valid) allocator.free(t2);
+
+    const text1_len = std.unicode.utf8CountCodepoints(t1) catch unreachable;
+    const text2_len = std.unicode.utf8CountCodepoints(t2) catch unreachable;
+
+    const max_d: isize = @intCast((text1_len + text2_len + 1) / 2);
     const v_offset = max_d;
     const v_length = 2 * max_d;
 
@@ -294,7 +325,7 @@ fn diffBisectTimer(allocator: Allocator, diff_timeout: f32, text1: []const u8, t
     v1[@intCast(v_offset + 1)] = 0;
     v2[@intCast(v_offset + 1)] = 0;
 
-    const delta = @as(isize, @intCast(text1.len)) - @as(isize, @intCast(text2.len));
+    const delta = @as(isize, @intCast(text1_len)) - @as(isize, @intCast(text2_len));
     // if the total number of charecters is odd, then the front path will
     // collide with the reverse path.
     const front = @mod(delta, 2) != 0;
@@ -320,25 +351,30 @@ fn diffBisectTimer(allocator: Allocator, diff_timeout: f32, text1: []const u8, t
             else
                 v1[@intCast(k1_offset - 1)] + 1;
             var y1 = x1 - k1;
-            while (@as(usize, @intCast(x1)) < text1.len and @as(usize, @intCast(y1)) < text2.len and text1[@intCast(x1)] == text2[@intCast(y1)]) {
+            while (@as(usize, @intCast(x1)) < text1_len and @as(usize, @intCast(y1)) < text2_len and
+                t1[utils.utf8IdxOfX(t1, @intCast(x1)).?] == t2[utils.utf8IdxOfX(t2, @intCast(y1)).?]) // NOTE: it might be faster to store string as decoded codepoints rather then looping to location every time
+            {
                 x1 += 1;
                 y1 += 1;
             }
             v1[@intCast(k1_offset)] = x1;
-            if (x1 > text1.len) {
+            if (x1 > text1_len) {
                 // Ran off the right of the graph.
                 k1_end += 2;
-            } else if (y1 > text2.len) {
+            } else if (y1 > text2_len) {
                 // Ran off the bottom of the graph.
                 k1_start += 2;
             } else if (front) {
                 const k2_offset = v_offset + delta - k1;
                 if (k2_offset >= 0 and k2_offset < v_length and v2[@intCast(k2_offset)] != -1) {
                     // Mirror x2 onto the top-left coordinate system.
-                    const x2 = @as(isize, @intCast(text1.len)) - v2[@intCast(k2_offset)];
+                    const x2 = @as(isize, @intCast(text1_len)) - v2[@intCast(k2_offset)];
                     if (x1 >= x2) {
                         // Overlap detected.
-                        return diffBisectSplitTimer(allocator, diff_timeout, text1, text2, @intCast(x1), @intCast(y1), ns_time_limit, timer);
+                        return diffBisectSplitTimer(allocator, diff_timeout, t1, t2, @intCast(x1), @intCast(y1), ns_time_limit, timer) catch |e| switch (e) {
+                            error.OutOfBounds => unreachable,
+                            else => @as(error{ OutOfMemory, InvalidUtf8 }, @errorCast(e)),
+                        };
                     }
                 }
             }
@@ -353,17 +389,18 @@ fn diffBisectTimer(allocator: Allocator, diff_timeout: f32, text1: []const u8, t
             else
                 v2[@intCast(k2_offset - 1)] + 1;
             var y2 = x2 - k2;
-            while (@as(usize, @intCast(x2)) < text1.len and @as(usize, @intCast(y2)) < text2.len and
-                text1[@intCast(@as(isize, @intCast(text1.len)) - x2 - 1)] == text2[@intCast(@as(isize, @intCast(text2.len)) - y2 - 1)])
+            while (@as(usize, @intCast(x2)) < text1_len and @as(usize, @intCast(y2)) < text2_len and
+                t1[utils.utf8IdxOfX(t1, @intCast(@as(isize, @intCast(text1_len)) - x2 - 1)).?] ==
+                t2[utils.utf8IdxOfX(t2, @intCast(@as(isize, @intCast(text2_len)) - y2 - 1)).?])
             {
                 x2 += 1;
                 y2 += 1;
             }
             v2[@intCast(k2_offset)] = x2;
-            if (@as(usize, @intCast(x2)) > text1.len) {
+            if (@as(usize, @intCast(x2)) > text1_len) {
                 // Ran off the left of the graph.
                 k2_end += 2;
-            } else if (@as(usize, @intCast(y2)) > text2.len) {
+            } else if (@as(usize, @intCast(y2)) > text2_len) {
                 k2_start += 2;
             } else if (!front) {
                 const k1_offset = v_offset + delta - k2;
@@ -371,10 +408,13 @@ fn diffBisectTimer(allocator: Allocator, diff_timeout: f32, text1: []const u8, t
                     const x1 = v1[@intCast(k1_offset)];
                     const y1 = v_offset + x1 - k1_offset;
                     // Mirror x2 onto top-left coordinate system
-                    x2 = @intCast(text1.len - @as(usize, @intCast(x2)));
+                    x2 = @intCast(text1_len - @as(usize, @intCast(x2)));
                     if (x1 >= x2) {
                         // Overlap detected
-                        return diffBisectSplitTimer(allocator, diff_timeout, text1, text2, @intCast(x1), @intCast(y1), ns_time_limit, timer);
+                        return diffBisectSplitTimer(allocator, diff_timeout, t1, t2, @intCast(x1), @intCast(y1), ns_time_limit, timer) catch |e| switch (e) {
+                            error.OutOfBounds => unreachable,
+                            else => @as(error{ OutOfMemory, InvalidUtf8 }, @errorCast(e)),
+                        };
                     }
                 }
             }
@@ -385,9 +425,9 @@ fn diffBisectTimer(allocator: Allocator, diff_timeout: f32, text1: []const u8, t
     // number of diffs equals number of characters, no commonalitry at all.
     var diffs = try allocator.alloc(Diff, 2);
     errdefer allocator.free(diffs);
-    diffs[0] = try Diff.fromSlice(allocator, text1, .delete);
+    diffs[0] = try Diff.fromSlice(allocator, t1, .delete);
     errdefer diffs[0].deinit(allocator);
-    diffs[1] = try Diff.fromSlice(allocator, text2, .insert);
+    diffs[1] = try Diff.fromSlice(allocator, t2, .insert);
     errdefer diffs[1].deinit(allocator);
     return diffs;
 }
@@ -398,13 +438,15 @@ pub fn diffBisectSplit(allocator: Allocator, diff_timeout: f32, text1: []const u
     var timer = std.time.Timer.start() catch @panic("Timer not available");
     return diffBisectSplitTimer(allocator, diff_timeout, text1, text2, x, y, ns_time_limit, &timer);
 }
-fn diffBisectSplitTimer(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, x: usize, y: usize, ns_time_limit: u64, timer: *std.time.Timer) Allocator.Error![]Diff {
-    std.debug.assert(x <= text1.len);
-    std.debug.assert(y <= text2.len);
-    const text1a = text1[0..x];
-    const text2a = text2[0..y];
-    const text1b = text1[x..];
-    const text2b = text2[y..];
+fn diffBisectSplitTimer(allocator: Allocator, diff_timeout: f32, text1: []const u8, text2: []const u8, x: usize, y: usize, ns_time_limit: u64, timer: *std.time.Timer) (error{ InvalidUtf8, OutOfBounds } || Allocator.Error)![]Diff {
+    const xn = utils.utf8IdxOfX(text1, x);
+    const yn = utils.utf8IdxOfX(text2, y);
+    if (xn == null or yn == null) return error.OutOfBounds;
+
+    const text1a = text1[0..xn.?];
+    const text2a = text2[0..yn.?];
+    const text1b = text1[xn.?..];
+    const text2b = text2[yn.?..];
 
     var diffs1 = try diffMainStringStringBoolTimeoutTimer(allocator, diff_timeout, text1a, text2a, false, ns_time_limit, timer);
     errdefer allocator.free(diffs1);
@@ -512,7 +554,7 @@ pub fn diffCharsToLines(allocator: Allocator, diffs: *[]Diff, line_array: [][]co
 
 ///Determine if the suffix of one string is the prefix of another.
 pub fn diffCommonOverlap(text1: []const u8, text2: []const u8) usize {
-    if (text1.len == 0 and text2.len == 0) return 0;
+    if (text1.len == 0 or text2.len == 0) return 0;
     var t1 = text1;
     var t2 = text2;
 
@@ -543,6 +585,9 @@ pub fn diffCommonOverlap(text1: []const u8, text2: []const u8) usize {
             length += 1;
         }
     }
+
+    // should be utf8 compatible since the end of a utf8 cant match the start
+    std.debug.assert(std.unicode.utf8ValidateSlice(text2[0..best]));
 
     return best;
 }
@@ -662,7 +707,6 @@ pub fn diffCleanupSemanticScore(one: []const u8, two: []const u8) usize {
         return 6;
     }
 
-    // TODO: these need to operate on utf8 chars
     const char1 = one[one.len - 1];
     const char2 = two[0];
     const non_alpha_numeric1 = switch (char1) {

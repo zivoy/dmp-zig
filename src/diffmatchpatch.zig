@@ -62,7 +62,7 @@ fn DiffMatchPatchCustom(MatchMaxContainer: type) type {
         pub inline fn diffMainStringString(self: Self, text1: []const u8, text2: []const u8) std.mem.Allocator.Error![]Diff {
             return diff.diffMainStringString(self.allocator, self.diff_timeout, text1, text2);
         }
-        pub inline fn diffMainStringStringBool(self: Self, text1: []const u8, text2: []const u8, check_lines: bool) std.mem.Allocator.Error![]Diff {
+        pub inline fn diffMainStringStringBool(self: Self, text1: []const u8, text2: []const u8, check_lines: bool) (error{InvalidUtf8} || std.mem.Allocator.Error)![]Diff {
             return diff.diffMainStringStringBool(self.allocator, self.diff_timeout, text1, text2, check_lines);
         }
         pub inline fn diffCommonPrefix(self: Self, text1: []const u8, text2: []const u8) usize {

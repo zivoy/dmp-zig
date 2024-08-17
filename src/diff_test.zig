@@ -167,15 +167,18 @@ test "halfmatch" {
 }
 
 test "bisect split" {
-    if (true) return error.SkipZigTest;
     const dmp = DMP.init(testing.allocator);
 
     const text1 = "STUV\x05WX\x05YZ\x05[";
     const text2 = "WĺĻļ\x05YZ\x05ĽľĿŀZ";
+    try testing.expect(std.unicode.utf8ValidateSlice(text1));
+    try testing.expect(std.unicode.utf8ValidateSlice(text2));
 
     const diffs = try DiffPrivate.diffBisectSplit(testing.allocator, dmp.diff_timeout, text1, text2, 7, 6, std.time.ns_per_hour);
+    defer testing.allocator.free(diffs);
     defer for (diffs) |*diff| diff.deinit(testing.allocator);
-    for (diffs) |*diff| {
+
+    for (diffs) |diff| {
         try testing.expect(std.unicode.utf8ValidateSlice(diff.text));
     }
     // TODO: actual expected outcome
@@ -1324,15 +1327,14 @@ test "bisect" {
 
     // Test for invalid UTF-8 sequences
     {
-        if (true) return; // TODO: see other
-        const diffs: []Diff = &.{
+        const diffs: []const Diff = &.{
             try Diff.fromString(testing.allocator, "��", .equal),
         };
-        defer for (diffs) |*diff| diff.deinit();
+        defer for (diffs) |*diff| @constCast(diff).deinit(testing.allocator);
 
-        const actual = try DiffPrivate.diffBisect(dmp, "\xe0\xe5", "\xe0\xe5", std.time.ns_per_min);
+        const actual = try DiffPrivate.diffBisect(testing.allocator, dmp.diff_timeout, "\xe0\xe5", "\xe0\xe5", std.time.ns_per_min);
         defer testing.allocator.free(actual);
-        defer for (actual) |*diff| diff.deinit();
+        defer for (actual) |*diff| diff.deinit(testing.allocator);
 
         try testing.expectEqual(diffs.len, actual.len);
         for (diffs, actual) |expected, diff| {
@@ -1542,7 +1544,6 @@ test "diff main" {
 
     // Test for invalid UTF-8 sequences
     {
-        if (true) return; // TODO: together with unicode verification
         const diffs: []const Diff = &.{
             try Diff.fromString(testing.allocator, "��", .delete),
         };

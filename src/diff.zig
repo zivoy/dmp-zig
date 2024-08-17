@@ -69,28 +69,42 @@ pub fn diffMainStringStringBool(allocator: Allocator, diff_timeout: f32, text1: 
 
 ///Determine the common prefix of two strings.
 pub fn diffCommonPrefix(text1: []const u8, text2: []const u8) usize {
-    const n = @min(text1.len, text2.len);
-    for (0..n) |i| {
-        if (text1[i] != text2[i]) {
-            return i;
-        }
+    std.debug.assert(std.unicode.utf8ValidateSlice(text1));
+    std.debug.assert(std.unicode.utf8ValidateSlice(text2));
+
+    var itr1 = std.unicode.Utf8View.initUnchecked(text1).iterator();
+    var itr2 = std.unicode.Utf8View.initUnchecked(text2).iterator();
+
+    var len: usize = 0;
+    while (true) {
+        const c1 = itr1.nextCodepoint() orelse break;
+        const c2 = itr2.nextCodepoint() orelse break;
+        if (c1 != c2) break;
+        len = itr1.i;
     }
-    return n;
+    return len;
 }
 
 ///Determine the common suffix of two strings.
 pub fn diffCommonSuffix(text1: []const u8, text2: []const u8) usize {
-    const n = @min(text1.len, text2.len);
-    for (1..n + 1) |i| {
-        if (text1[text1.len - i] != text2[text2.len - i]) {
-            return i - 1;
-        }
+    std.debug.assert(std.unicode.utf8ValidateSlice(text1));
+    std.debug.assert(std.unicode.utf8ValidateSlice(text2));
+
+    var itr1 = utils.initUtf8BackwardsIterator(text1);
+    var itr2 = utils.initUtf8BackwardsIterator(text2);
+
+    var len: usize = 0;
+    while (true) {
+        const c1 = itr1.nextCodepoint() orelse break;
+        const c2 = itr2.nextCodepoint() orelse break;
+        if (c1 != c2) break;
+        len += std.unicode.utf8CodepointSequenceLength(c1) catch unreachable;
     }
-    return n;
+    return len;
 }
 
 ///Reduce the number of edits by eliminating semantically trivial equalities.
-pub fn diffCleanupSemantic(allocator: Allocator, diffs: *[]Diff) !void {
+pub fn diffCleanupSemantic(allocator: Allocator, diffs: *[]Diff) Allocator.Error!void {
     if (diffs.len == 0) return;
     var diff_list = std.ArrayList(Diff).fromOwnedSlice(allocator, diffs.*);
     defer diff_list.deinit();
@@ -130,11 +144,12 @@ pub fn diffCleanupSemantic(allocator: Allocator, diffs: *[]Diff) !void {
             continue;
         }
 
+        std.debug.assert(std.unicode.utf8ValidateSlice(diff.text)); // TODO: make better, maybe decode?
         // An insertion or deletion.
         if (diff.operation == .insert) {
-            length_insertions2 += utils.utf8CountCodepointsPanic(diff.text);
+            length_insertions2 += std.unicode.utf8CountCodepoints(diff.text) catch unreachable;
         } else {
-            length_deletions2 += utils.utf8CountCodepointsPanic(diff.text);
+            length_deletions2 += std.unicode.utf8CountCodepoints(diff.text) catch unreachable;
         }
 
         // Eliminate an equality that is smaller or equal to the edits on both sides of it.
@@ -143,7 +158,8 @@ pub fn diffCleanupSemantic(allocator: Allocator, diffs: *[]Diff) !void {
 
         if (blk: {
             if (last_equality == null) break :blk false;
-            const last_equality_count = utils.utf8CountCodepointsPanic(last_equality.?);
+            std.debug.assert(std.unicode.utf8ValidateSlice(diff.text));
+            const last_equality_count = std.unicode.utf8CountCodepoints(last_equality.?) catch unreachable;
             break :blk last_equality_count <= difference1 and last_equality_count <= difference2;
         }) {
             // Duplicate record
@@ -201,8 +217,10 @@ pub fn diffCleanupSemantic(allocator: Allocator, diffs: *[]Diff) !void {
             const overlap_length1 = DiffPrivate.diffCommonOverlap(last_diff.text, diff.text);
             const overlap_length2 = DiffPrivate.diffCommonOverlap(diff.text, last_diff.text);
             if (overlap_length1 >= overlap_length2) {
-                if (@as(f64, @floatFromInt(overlap_length1)) >= @as(f64, @floatFromInt(utils.utf8CountCodepointsPanic(last_diff.text))) / 2 or
-                    @as(f64, @floatFromInt(overlap_length1)) >= @as(f64, @floatFromInt(utils.utf8CountCodepointsPanic(diff.text))) / 2)
+                std.debug.assert(std.unicode.utf8ValidateSlice(last_diff.text));
+                std.debug.assert(std.unicode.utf8ValidateSlice(diff.text));
+                if (@as(f64, @floatFromInt(overlap_length1)) >= @as(f64, @floatFromInt(std.unicode.utf8CountCodepoints(last_diff.text) catch unreachable)) / 2 or
+                    @as(f64, @floatFromInt(overlap_length1)) >= @as(f64, @floatFromInt(std.unicode.utf8CountCodepoints(diff.text) catch unreachable)) / 2)
                 {
                     // Overlap found. Insert an equality and trim the surrounding edits.
                     try diff_list.insert(pointer, try Diff.fromSlice(allocator, diff.text[0..overlap_length1], .equal));
@@ -215,8 +233,10 @@ pub fn diffCleanupSemantic(allocator: Allocator, diffs: *[]Diff) !void {
                     pointer += 1;
                 }
             } else {
-                if (@as(f64, @floatFromInt(overlap_length2)) >= @as(f64, @floatFromInt(utils.utf8CountCodepointsPanic(last_diff.text))) / 2 or
-                    @as(f64, @floatFromInt(overlap_length2)) >= @as(f64, @floatFromInt(utils.utf8CountCodepointsPanic(diff.text))) / 2)
+                std.debug.assert(std.unicode.utf8ValidateSlice(last_diff.text));
+                std.debug.assert(std.unicode.utf8ValidateSlice(diff.text));
+                if (@as(f64, @floatFromInt(overlap_length2)) >= @as(f64, @floatFromInt(std.unicode.utf8CountCodepoints(last_diff.text) catch unreachable)) / 2 or
+                    @as(f64, @floatFromInt(overlap_length2)) >= @as(f64, @floatFromInt(std.unicode.utf8CountCodepoints(diff.text) catch unreachable)) / 2)
                 {
                     // Reverse overlap found. Insert an equality and swap and trim the surrounding edits.
                     try diff_list.insert(pointer, try Diff.fromSlice(allocator, last_diff.text[0..overlap_length2], .equal));
@@ -362,7 +382,7 @@ pub fn diffCleanupSemanticLossless(allocator: Allocator, diffs: *[]Diff) !void {
 }
 
 ///Reduce the number of edits by eliminating operationally trivial equalities.
-pub fn diffCleanupEfficiency(allocator: Allocator, diff_edit_cost: u16, diffs: *[]Diff) !void {
+pub fn diffCleanupEfficiency(allocator: Allocator, diff_edit_cost: u16, diffs: *[]Diff) Allocator.Error!void {
     if (diffs.len == 0) return;
 
     var diff_list = std.ArrayList(Diff).fromOwnedSlice(allocator, diffs.*);
@@ -794,16 +814,19 @@ pub fn diffLevenshtein(diffs: []Diff) usize {
     var insertions: usize = 0;
     var deletions: usize = 0;
 
-    for (diffs) |diff| switch (diff.operation) {
-        .insert => insertions += utils.utf8CountCodepointsPanic(diff.text),
-        .delete => deletions += utils.utf8CountCodepointsPanic(diff.text),
-        .equal => {
-            // A deletion and an insertion is one substitution.
-            levenshtein += @max(insertions, deletions);
-            insertions = 0;
-            deletions = 0;
-        },
-    };
+    for (diffs) |diff| {
+        std.debug.assert(std.unicode.utf8ValidateSlice(diff.text));
+        switch (diff.operation) {
+            .insert => insertions += std.unicode.utf8CountCodepoints(diff.text) catch unreachable,
+            .delete => deletions += std.unicode.utf8CountCodepoints(diff.text) catch unreachable,
+            .equal => {
+                // A deletion and an insertion is one substitution.
+                levenshtein += @max(insertions, deletions);
+                insertions = 0;
+                deletions = 0;
+            },
+        }
+    }
     levenshtein += @max(insertions, deletions);
     return levenshtein;
 }
@@ -820,9 +843,10 @@ pub fn diffToDelta(allocator: Allocator, diffs: []Diff) Allocator.Error![:0]cons
 }
 pub fn diffToDeltaWriter(writer: anytype, diffs: []Diff) @TypeOf(writer).Error!void {
     for (diffs, 1..) |diff, i| {
+        std.debug.assert(std.unicode.utf8ValidateSlice(diff.text));
         switch (diff.operation) {
-            .equal => try writer.print("={d}", .{utils.utf8CountCodepointsPanic(diff.text)}),
-            .delete => try writer.print("-{d}", .{utils.utf8CountCodepointsPanic(diff.text)}),
+            .equal => try writer.print("={d}", .{std.unicode.utf8CountCodepoints(diff.text) catch unreachable}),
+            .delete => try writer.print("-{d}", .{std.unicode.utf8CountCodepoints(diff.text) catch unreachable}),
             .insert => {
                 try writer.writeByte('+');
                 try utils.encodeURI(writer, diff.text);
