@@ -25,14 +25,14 @@ but can also be compiled into freestanding wasm, a static, or a shared library f
 First add it to your `build.zig.zon` file 
 you can use this command to add the URL and hash automatically
 ```sh 
-zig fetch --save https://github.com/zivoy/dmp-zig/archive/refs/tags/v1.0.0.tar.gz
+zig fetch --save https://github.com/zivoy/dmp-zig/archive/refs/tags/v1.0.1.tar.gz
 ```
 
 or you can add 
 ```zig
 .diffmatchpatch = .{
-    .url = "https://github.com/zivoy/dmp-zig/archive/refs/tags/v1.0.0.tar.gz",
-    .hash = "122038ddef173a3bc24e0a2e8a95614eb73107f21889ad9cb1080d45f5641b484b10",
+    .url = "https://github.com/zivoy/dmp-zig/archive/refs/tags/v1.0.1.tar.gz",
+    .hash = "12202234ff332ab054fcb962bbaaa892791172ed072d0b69fe24c1bc5473f984f2c1",
 },
 ```
 under the dependencies section yourself
