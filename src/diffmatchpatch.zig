@@ -56,39 +56,55 @@ fn DiffMatchPatchCustom(MatchMaxContainer: type) type {
             return .{ .allocator = allocator };
         }
 
-        // TODO: move doc comments here
-
         // diff ------------------
+
+        ///Find the differences between two texts.
+        ///Run a faster, slightly less optimal diff.
+        ///This method allows the 'checklines' of `diffMainStringStringBool` to be optional.
+        ///Most of the time checklines is wanted, so default to true.
         pub inline fn diffMainStringString(self: Self, text1: []const u8, text2: []const u8) std.mem.Allocator.Error![]Diff {
             return diff.mainStringString(self.allocator, self.diff_timeout, text1, text2);
         }
+        ///Find the differences between two texts.
         pub inline fn diffMainStringStringBool(self: Self, text1: []const u8, text2: []const u8, check_lines: bool) (error{InvalidUtf8} || std.mem.Allocator.Error)![]Diff {
             return diff.mainStringStringBool(self.allocator, self.diff_timeout, text1, text2, check_lines);
         }
+        ///Determine the common prefix of two strings.
         pub inline fn diffCommonPrefix(self: Self, text1: []const u8, text2: []const u8) usize {
             _ = self;
             return diff.commonPrefix(text1, text2);
         }
+        ///Determine the common suffix of two strings.
         pub inline fn diffCommonSuffix(self: Self, text1: []const u8, text2: []const u8) usize {
             _ = self;
             return diff.commonSuffix(text1, text2);
         }
+        ///Reduce the number of edits by eliminating semantically trivial equalities.
         pub inline fn diffCleanupSemantic(self: Self, diffs: *[]Diff) std.mem.Allocator.Error!void {
             return diff.cleanupSemantic(self.allocator, diffs);
         }
+        ///Look for single edits surrounded on both sides by equalities
+        ///which can be shifted sideways to align the edit to a word boundary.
+        ///e.g: The c<ins>at c</ins>ame. -> The <ins>cat </ins>came.
         pub inline fn diffCleanupSemanticLossless(self: Self, diffs: *[]Diff) std.mem.Allocator.Error!void {
             return diff.cleanupSemanticLossless(self.allocator, diffs);
         }
+        ///Reduce the number of edits by eliminating operationally trivial equalities.
         pub inline fn diffCleanupEfficiency(self: Self, diffs: *[]Diff) std.mem.Allocator.Error!void {
             return diff.cleanupEfficiency(self.allocator, self.diff_edit_cost, diffs);
         }
+        ///Reorder and merge like edit sections.  Merge equalities.
+        ///Any edit section can move as long as it doesn't cross an equality.
         pub inline fn diffCleanupMerge(self: Self, diffs: *[]Diff) std.mem.Allocator.Error!void {
             return diff.cleanupMerge(self.allocator, diffs);
         }
+        ///loc is a location in text1, compute and return the equivalent location in text2.
+        ///e.g. "The cat" vs "The big cat", 1->1, 5->8
         pub inline fn diffXIndex(self: Self, diffs: []Diff, loc: usize) usize {
             _ = self;
             return diff.xIndex(diffs, loc);
         }
+        ///Convert a Diff list into a pretty HTML report.
         pub inline fn diffPrettyHtml(self: Self, diffs: []Diff) std.mem.Allocator.Error![:0]const u8 {
             return diff.prettyHtml(self.allocator, diffs);
         }
@@ -96,6 +112,7 @@ fn DiffMatchPatchCustom(MatchMaxContainer: type) type {
             _ = self;
             return diff.prettyHtmlWriter(writer, diffs);
         }
+        ///Converts a []Diff into a colored text report.
         pub inline fn diffPrettyText(self: Self, diffs: []Diff) std.mem.Allocator.Error![:0]const u8 {
             return diff.prettyText(self.allocator, diffs);
         }
@@ -103,16 +120,23 @@ fn DiffMatchPatchCustom(MatchMaxContainer: type) type {
             _ = self;
             return diff.prettyTextWriter(writer, diffs);
         }
+        ///Compute and return the source text (all equalities and deletions).
         pub inline fn diffText1(self: Self, diffs: []Diff) std.mem.Allocator.Error![:0]const u8 {
             return diff.text1(self.allocator, diffs);
         }
+        ///Compute and return the destination text (all equalities and insertions).
         pub inline fn diffText2(self: Self, diffs: []Diff) std.mem.Allocator.Error![:0]const u8 {
             return diff.text2(self.allocator, diffs);
         }
+        ///Compute the Levenshtein distance; the number of inserted, deleted or substituted characters.
         pub fn diffLevenshtein(self: Self, diffs: []Diff) usize {
             _ = self;
             return diff.levenshtein(diffs);
         }
+        ///Crush the diff into an encoded string which describes the operations
+        ///required to transform text1 into text2.
+        ///E.g. =3\t-2\t+ing  -> Keep 3 chars, delete 2 chars, insert 'ing'.
+        ///Operations are tab-separated.  Inserted text is escaped using %xx notation.
         pub inline fn diffToDelta(self: Self, diffs: []Diff) std.mem.Allocator.Error![:0]const u8 {
             return diff.toDelta(self.allocator, diffs);
         }
@@ -120,49 +144,79 @@ fn DiffMatchPatchCustom(MatchMaxContainer: type) type {
             _ = self;
             return diff.toDeltaWriter(writer, diffs);
         }
+        ///Given the original text1, and an encoded string which describes the
+        ///operations required to transform text1 into text2, compute the full diff.
         pub fn diffFromDelta(self: Self, text1: []const u8, delta: []const u8) (DiffError || std.fmt.ParseIntError || std.mem.Allocator.Error)![]Diff {
             return diff.fromDelta(self.allocator, text1, delta);
         }
 
         // match -----------------
+
+        ///Locate the best instance of 'pattern' in 'text' near 'loc'.
+        ///Returns null if no match found.
         pub inline fn matchMain(self: Self, text: []const u8, pattern: []const u8, loc: usize) (MatchError || std.mem.Allocator.Error)!?usize {
             return match.main(MatchMaxContainer, self.allocator, self.match_distance, self.match_threshold, text, pattern, loc);
         }
+        ///Locate the best instance of 'pattern' in 'text' near 'loc' using the
+        ///Bitap algorithm.  Returns null if no match found.
         pub inline fn matchBitap(self: Self, text: []const u8, pattern: []const u8, loc: usize) (MatchError || std.mem.Allocator.Error)!?usize {
             return match.bitap(MatchMaxContainer, self.allocator, self.match_distance, self.match_threshold, text, pattern, loc);
         }
 
         // patch -----------------
+
+        ///Increase the context until it is unique,
+        ///but don't let the pattern expand beyond match_max_bits.
         pub inline fn patchAddContext(self: Self, p: *Patch, text: []const u8) std.mem.Allocator.Error!void {
             return patch.addContext(MatchMaxContainer, self.allocator, self.patch_margin, p, text);
         }
+        // patch make parts
+        ///Compute a list of patches to turn text1 into text2.
+        ///A set of diffs will be computed.
         pub inline fn patchMakeStringString(self: Self, text1: [:0]const u8, text2: [:0]const u8) std.mem.Allocator.Error!PatchList {
             return patch.makeStringString(MatchMaxContainer, self.allocator, self.patch_margin, self.diff_edit_cost, self.diff_timeout, text1, text2);
         }
+        ///Compute a list of patches to turn text1 into text2.
+        ///text1 will be derived from the provided diffs.
         pub inline fn patchMakeDiffs(self: Self, diffs: []Diff) std.mem.Allocator.Error!PatchList {
             return patch.makeDiffs(MatchMaxContainer, self.allocator, self.patch_margin, diffs);
         }
+        ///Compute a list of patches to turn text1 into text2.
+        ///text2 is ignored, diffs are the delta between text1 and text2.
+        ///Depricated, use patchStringDiffs
         pub inline fn patchMakeStringStringDiffs(self: Self, text1: [:0]const u8, text2: [:0]const u8, diffs: []Diff) std.mem.Allocator.Error!PatchList {
             return patch.makeStringStringDiffs(MatchMaxContainer, self.allocator, self.patch_margin, text1, text2, diffs);
         }
+        ///Compute a list of patches to turn text1 into text2.
+        ///text2 is not provided, diffs are the delta between text1 and text2.
         pub inline fn patchMakeStringDiffs(self: Self, text1: [:0]const u8, diffs: []Diff) std.mem.Allocator.Error!PatchList {
             return patch.makeStringDiffs(MatchMaxContainer, self.allocator, self.patch_margin, text1, diffs);
         }
+        ///Given an array of patches, return another array that is identical.
         pub inline fn patchDeepCopy(self: Self, patches: PatchList) std.mem.Allocator.Error!PatchList {
             return patch.deepCopy(self.allocator, patches);
         }
+        ///Merge a set of patches onto the text.  Return a patched text, as well
+        ///as an array of true/false values indicating which patches were applied.
         pub inline fn patchApply(self: Self, patches: PatchList, text: [:0]const u8) !struct { []const u8, []bool } {
             return patch.apply(MatchMaxContainer, self.allocator, self.diff_timeout, self.match_distance, self.match_threshold, self.patch_margin, self.patch_delete_threshold, patches, text);
         }
+        ///Add some padding on text start and end so that edges can match something.
+        ///Intended to be called only from within `patchApply`.
         pub inline fn patchAddPadding(self: Self, patches: *PatchList) std.mem.Allocator.Error![:0]const u8 {
             return patch.addPadding(self.allocator, self.patch_margin, patches);
         }
+        ///Look through the patches and break up any which are longer than the
+        ///maximum limit of the match algorithm.
+        ///Intended to be called only from within `patchApply`.
         pub inline fn patchSplitMax(self: Self, patches: *PatchList) std.mem.Allocator.Error!void {
             return patch.splitMax(MatchMaxContainer, self.allocator, self.patch_margin, patches);
         }
+        ///Take a list of patches and return a textual representation.
         pub inline fn patchToText(self: Self, patches: PatchList) std.mem.Allocator.Error![:0]const u8 {
             return patch.toText(self.allocator, patches);
         }
+        ///Parse a textual representation of patches and return a List of Patch objects.
         pub inline fn patchFromText(self: Self, textline: [:0]const u8) (PatchError || std.mem.Allocator.Error)!PatchList {
             return patch.fromText(self.allocator, textline);
         }

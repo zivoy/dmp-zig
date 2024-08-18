@@ -1,6 +1,5 @@
 // TODO: test this if possible?
 // TODO: better error handling
-// TODO: finish ffi bindings (see build file)
 const std = @import("std");
 const builtin = @import("builtin");
 
