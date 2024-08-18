@@ -4,14 +4,13 @@ for comparing and updating and patching texts
 
 ## Example
 ```zig
-const dmp = @import("diffmatchpatch");
-
-const d = dmp.DiffMatchPatch.init(testing.allocator);
+const DiffMatchPatch = @import("diffmatchpatch").DiffMatchPatch;
+const dmp = DiffMatchPatch.init(testing.allocator);
 
 const str1 = "here is a string one it is a string and string and it strings the string with string and string";
 const str2 = "string two is slightly different it also strings but it strings and strings but might not string";
 
-var patches = try d.patchMakeStringString(str1, str2);
+var patches = try dmp.patchMakeStringString(str1, str2);
 defer patches.deinit();
 
 for (patches.items) |patch| std.debug.print("{any}\n", .{patch});
