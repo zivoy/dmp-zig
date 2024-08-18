@@ -2,6 +2,21 @@
 Zig port of the [diff-match-patch](https://github.com/google/diff-match-patch/) algorithm
 for comparing and updating and patching texts
 
+## Example
+```zig
+const dmp = @import("diffmatchpatch");
+
+const d = dmp.DiffMatchPatch.init(testing.allocator);
+
+const str1 = "here is a string one it is a string and string and it strings the string with string and string";
+const str2 = "string two is slightly different it also strings but it strings and strings but might not string";
+
+var patches = try d.patchMakeStringString(str1, str2);
+defer patches.deinit();
+
+for (patches.items) |patch| std.debug.print("{any}\n", .{patch});
+```
+
 ## Uses
 dmp-zig can be used as a zig library in other zig projects
 but can also be compiled into freestanding wasm, a static, or a shared library for use with other languages
