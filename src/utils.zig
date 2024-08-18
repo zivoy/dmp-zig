@@ -96,7 +96,6 @@ pub fn resize(comptime T: type, allocator: std.mem.Allocator, slice: *[]T, new_l
     allocator.free(slice.*);
     slice.* = new_slice;
     return len_start;
-    // TODO: tests
 }
 
 ///Emulates the regex
@@ -330,4 +329,28 @@ test "backwards iterator" {
     try testing.expectEqualStrings("H", itr.nextCodepointSlice().?);
     try testing.expectEqual(null, itr.nextCodepointSlice());
     try testing.expectEqualStrings("", itr.peek(1));
+}
+
+test "resize" {
+    var mem = try testing.allocator.alloc(u8, 5);
+    defer testing.allocator.free(mem);
+
+    try testing.expectEqual(5, mem.len);
+    for (0..mem.len) |i| {
+        mem[i] = @intCast(i + 1);
+    }
+    try testing.expectEqual(2, mem[1]);
+
+    const old_len = try resize(u8, testing.allocator, &mem, mem.len + 3);
+    @memset(mem[old_len..], 9);
+
+    try testing.expectEqualDeep(&[_]u8{ 1, 2, 3, 4, 5, 9, 9, 9 }, mem);
+
+    _ = try resize(u8, testing.allocator, &mem, 3);
+    try testing.expectEqual(3, mem.len);
+    try testing.expectEqual(3, mem[mem.len - 1]);
+
+    _ = try resize(u8, testing.allocator, &mem, mem.len);
+    try testing.expectEqual(3, mem.len);
+    try testing.expectEqual(1, mem[0]);
 }
