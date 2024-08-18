@@ -36,7 +36,7 @@ fn diffRebuildTexts(diffs: []Diff) !struct { []const u8, []const u8 } {
     };
 }
 
-fn testDiffList(diffs: []const Diff) []Diff {
+pub fn testDiffList(diffs: []const Diff) []Diff {
     const diff_o = testing.allocator.alloc(Diff, diffs.len) catch @panic("OOM");
     @memcpy(diff_o, diffs);
     return diff_o;

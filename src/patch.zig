@@ -23,9 +23,8 @@ pub const PatchList = struct {
     }
 };
 
-pub const PatchDiffsArrayList = std.ArrayListUnmanaged(Diff);
 pub const Patch = struct {
-    diffs: *PatchDiffsArrayList,
+    diffs: []Diff,
     start1: usize,
     start2: usize,
     length1: usize,
@@ -66,7 +65,7 @@ pub const Patch = struct {
         try writer.writeAll(" @@\n");
 
         // Escape the body of the patch with %xx notation.
-        for (self.diffs.items) |diff| {
+        for (self.diffs) |diff| {
             switch (diff.operation) {
                 .insert => try writer.writeAll("+"),
                 .delete => try writer.writeAll("-"),
@@ -78,9 +77,7 @@ pub const Patch = struct {
         }
     }
 
-    pub fn init(allocator: std.mem.Allocator, start1: usize, start2: usize, length1: usize, length2: usize) !Patch {
-        const diffs = try allocator.create(PatchDiffsArrayList); // TODO: make this like diffs
-        diffs.* = .{};
+    pub fn init(start1: usize, start2: usize, length1: usize, length2: usize, diffs: []Diff) Patch {
         return Patch{
             .start1 = start1,
             .start2 = start2,
@@ -91,11 +88,10 @@ pub const Patch = struct {
     }
 
     pub fn deinit(self: *Patch, allocator: std.mem.Allocator) void {
-        for (self.diffs.items) |*diff| {
+        for (self.diffs) |*diff| {
             diff.deinit(allocator);
         }
-        self.diffs.deinit(allocator);
-        allocator.destroy(self.diffs);
+        allocator.free(self.diffs);
         self.* = undefined;
     }
 };
@@ -126,16 +122,25 @@ pub fn addContext(comptime MatchMaxContainer: type, allocator: Allocator, patch_
     const prefix_start = if (patch.start2 < padding) 0 else patch.start2 - padding;
     const prefix_end = patch.start2;
     const prefix = text[prefix_start..prefix_end];
-    if (prefix.len != 0) {
-        try patch.diffs.insert(allocator, 0, try Diff.fromSlice(allocator, prefix, .equal));
-    }
 
     // add the suffix
     const suffix_start = patch.start2 + patch.length1;
     const suffix_end = @min(text.len, patch.start2 + patch.length1 + padding);
     const suffix = text[suffix_start..suffix_end];
-    if (suffix.len != 0) {
-        try patch.diffs.append(allocator, try Diff.fromSlice(allocator, suffix, .equal));
+
+    {
+        var new_len = patch.diffs.len;
+        new_len += if (prefix.len != 0) 1 else 0;
+        new_len += if (suffix.len != 0) 1 else 0;
+        _ = try utils.resize(Diff, allocator, &patch.diffs, new_len);
+
+        if (prefix.len != 0) {
+            std.mem.copyBackwards(Diff, patch.diffs[1..], patch.diffs[0 .. patch.diffs.len - 1]);
+            patch.diffs[0] = try Diff.fromSlice(allocator, prefix, .equal);
+        }
+        if (suffix.len != 0) {
+            patch.diffs[patch.diffs.len - 1] = try Diff.fromSlice(allocator, suffix, .equal);
+        }
     }
 
     // Roll back the start points.
@@ -186,7 +191,11 @@ pub fn makeStringDiffs(comptime MatchMaxContainer: type, allocator: Allocator, p
         return .{ .items = try patches.toOwnedSlice(), .allocator = allocator };
     }
 
-    var patch = try Patch.init(allocator, 0, 0, 0, 0);
+    var patch = Patch.init(0, 0, 0, 0, undefined);
+
+    var patch_diffs = try allocator.alloc(Diff, diffs.len);
+    // errdefer allocator.free(patch_diffs);
+    var patch_diffs_ptr: usize = 0;
 
     var char_count1: usize = 0; // Number of characters into the text1 string.
     var char_count2: usize = 0; // Number of characters into the text2 string.
@@ -203,7 +212,7 @@ pub fn makeStringDiffs(comptime MatchMaxContainer: type, allocator: Allocator, p
     try postpatch_text.appendSlice(text1);
 
     for (diffs, 0..) |diff, loc| {
-        if (patch.diffs.items.len == 0 and diff.operation != .equal) {
+        if (patch_diffs_ptr == 0 and diff.operation != .equal) {
             // new patch starts here
             patch.start1 = char_count1;
             patch.start2 = char_count2;
@@ -211,34 +220,46 @@ pub fn makeStringDiffs(comptime MatchMaxContainer: type, allocator: Allocator, p
 
         switch (diff.operation) {
             .insert => {
-                try patch.diffs.append(allocator, diff);
+                patch_diffs[patch_diffs_ptr] = diff;
+                patch_diffs_ptr += 1;
+
                 patch.length2 += diff.text.len;
                 try postpatch_text.insertSlice(char_count2, diff.text);
             },
             .delete => {
                 patch.length1 += diff.text.len;
-                try patch.diffs.append(allocator, diff);
                 try postpatch_text.replaceRange(char_count2, diff.text.len, &.{});
+
+                patch_diffs[patch_diffs_ptr] = diff;
+                patch_diffs_ptr += 1;
             },
             .equal => {
                 if (diff.text.len <= 2 * patch_margin and
-                    patch.diffs.items.len != 0 and loc != diffs.len - 1)
+                    patch_diffs_ptr != 0 and loc != diffs.len - 1)
                 {
                     // Small equality inside a patch.
-                    try patch.diffs.append(allocator, diff);
+                    patch_diffs[patch_diffs_ptr] = diff;
+                    patch_diffs_ptr += 1;
+
                     patch.length1 += diff.text.len;
                     patch.length2 += diff.text.len;
                 } else {
                     allocator.free(diff.text);
                 }
+
                 if (diff.text.len >= 2 * patch_margin) {
                     // Time for a new patch.
-                    if (patch.diffs.items.len != 0) {
+                    if (patch_diffs_ptr != 0) {
+                        _ = try utils.resize(Diff, allocator, &patch_diffs, patch_diffs_ptr);
+                        patch.diffs = patch_diffs;
+
                         try addContext(MatchMaxContainer, allocator, patch_margin, &patch, prepatch_text.items);
                         try patches.append(patch);
-                        patch.diffs.shrinkAndFree(allocator, patch.diffs.items.len);
 
-                        patch = try Patch.init(allocator, 0, 0, 0, 0);
+                        patch = Patch.init(0, 0, 0, 0, undefined);
+                        patch_diffs_ptr = 0;
+                        patch_diffs = try allocator.alloc(Diff, diffs.len - (loc + 1));
+
                         // Unlike Unidiff, our patch lists have a rolling context.
                         // http://code.google.com/p/google-diff-match-patch/wiki/Unidiff
                         // Update prepatch text & pos to reflect the application of the
@@ -260,11 +281,14 @@ pub fn makeStringDiffs(comptime MatchMaxContainer: type, allocator: Allocator, p
         }
     }
     // Pick up the leftover patch if not empty.
-    if (patch.diffs.items.len != 0) {
+    if (patch_diffs_ptr != 0) {
+        _ = try utils.resize(Diff, allocator, &patch_diffs, patch_diffs_ptr);
+        patch.diffs = patch_diffs;
+
         try addContext(MatchMaxContainer, allocator, patch_margin, &patch, prepatch_text.items);
-        patch.diffs.shrinkAndFree(allocator, patch.diffs.items.len);
         try patches.append(patch);
     } else {
+        patch.diffs = patch_diffs; // to free together
         patch.deinit(allocator);
     }
 
@@ -276,13 +300,14 @@ pub fn deepCopy(allocator: Allocator, patches: PatchList) Allocator.Error!PatchL
     const patches_copy = try allocator.alloc(Patch, patches.items.len);
     errdefer allocator.free(patches_copy);
     for (patches.items, patches_copy) |patch, *patch_copy| {
-        patch_copy.* = try Patch.init(allocator, patch.start1, patch.start2, patch.length1, patch.length2);
-        errdefer patch_copy.deinit(allocator);
-
-        try patch_copy.diffs.ensureTotalCapacityPrecise(allocator, patch.diffs.items.len);
-        for (patch.diffs.items) |diff| {
-            patch_copy.diffs.appendAssumeCapacity(try Diff.fromSlice(allocator, diff.text, diff.operation));
+        const diffs = try allocator.alloc(Diff, patch.diffs.len);
+        errdefer allocator.free(diffs);
+        for (patch.diffs, diffs) |diff, *diff_copy| {
+            diff_copy.* = try Diff.fromSlice(allocator, diff.text, diff.operation); // NOTE: all the allocated ones wont get freed on an error
         }
+
+        patch_copy.* = Patch.init(patch.start1, patch.start2, patch.length1, patch.length2, diffs);
+        errdefer patch_copy.deinit(allocator);
     }
     return .{ .items = patches_copy, .allocator = allocator };
 }
@@ -326,7 +351,7 @@ pub fn apply(comptime MatchMaxContainer: type, allocator: Allocator, diff_timeou
     for (patchesCopy.items) |patch| {
         const expected_loc: usize = @intCast(@as(isize, @intCast(patch.start2)) + delta);
 
-        const text1 = try diff_funcs.text1(allocator, patch.diffs.items);
+        const text1 = try diff_funcs.text1(allocator, patch.diffs);
         defer allocator.free(text1);
 
         var start_loc: ?usize = null;
@@ -364,7 +389,7 @@ pub fn apply(comptime MatchMaxContainer: type, allocator: Allocator, diff_timeou
 
             if (std.mem.eql(u8, text1, text2)) {
                 // Perfect match, just shove the Replacement text in.
-                const replacement = try diff_funcs.text2(allocator, patch.diffs.items);
+                const replacement = try diff_funcs.text2(allocator, patch.diffs);
                 defer allocator.free(replacement);
                 try working_text.replaceRange(start_loc.?, text1.len, replacement);
             } else {
@@ -381,7 +406,7 @@ pub fn apply(comptime MatchMaxContainer: type, allocator: Allocator, diff_timeou
                 } else {
                     try diff_funcs.cleanupSemanticLossless(allocator, &diffs);
                     var index1: usize = 0;
-                    for (patch.diffs.items) |diff| {
+                    for (patch.diffs) |diff| {
                         if (diff.operation != .equal) blk: {
                             const index2 = diff_funcs.xIndex(diffs, index1);
                             if (diff.operation == .insert) {
@@ -407,7 +432,11 @@ pub fn apply(comptime MatchMaxContainer: type, allocator: Allocator, diff_timeou
     }
     // Strip the padding off.
     const new_len = working_text.items.len - 2 * null_padding.len;
-    std.mem.copyForwards(u8, working_text.items[0..new_len], working_text.items[null_padding.len .. working_text.items.len - null_padding.len]);
+    std.mem.copyForwards(
+        u8,
+        working_text.items[0..new_len],
+        working_text.items[null_padding.len .. working_text.items.len - null_padding.len],
+    );
     working_text.items.len = new_len;
     return .{ try working_text.toOwnedSlice(), applied };
 }
@@ -428,21 +457,23 @@ pub fn addPadding(allocator: Allocator, patch_margin: u16, patches: *PatchList) 
     }
 
     // Add some padding on start of first diff.
-    if (patches.items[0].diffs.items.len == 0 or patches.items[0].diffs.items[0].operation != .equal) {
+    if (patches.items[0].diffs.len == 0 or patches.items[0].diffs[0].operation != .equal) {
         // Add null_padding equality.
-        try patches.items[0].diffs.insert(allocator, 0, try Diff.fromSlice(allocator, null_padding, .equal));
+        const old_len = try utils.resize(Diff, allocator, &patches.items[0].diffs, patches.items[0].diffs.len + 1);
+        std.mem.copyBackwards(Diff, patches.items[0].diffs[1..], patches.items[0].diffs[0..old_len]);
+        patches.items[0].diffs[0] = try Diff.fromSlice(allocator, null_padding, .equal);
 
         patches.items[0].start1 -= padding_length; // Should be 0.
         patches.items[0].start2 -= padding_length; // Should be 0.
         patches.items[0].length1 += padding_length;
         patches.items[0].length2 += padding_length;
-    } else if (padding_length > patches.items[0].diffs.items[0].text.len) {
+    } else if (padding_length > patches.items[0].diffs[0].text.len) {
         // Grow first equality.
-        const extra_length = padding_length - patches.items[0].diffs.items[0].text.len;
-        const old_len = try utils.resize(u8, allocator, &patches.items[0].diffs.items[0].text, padding_length);
+        const extra_length = padding_length - patches.items[0].diffs[0].text.len;
+        const old_len = try utils.resize(u8, allocator, &patches.items[0].diffs[0].text, padding_length);
 
-        std.mem.copyBackwards(u8, patches.items[0].diffs.items[0].text[extra_length..], patches.items[0].diffs.items[0].text[0..old_len]);
-        @memcpy(patches.items[0].diffs.items[0].text[0..extra_length], null_padding[old_len..]);
+        std.mem.copyBackwards(u8, patches.items[0].diffs[0].text[extra_length..], patches.items[0].diffs[0].text[0..old_len]);
+        @memcpy(patches.items[0].diffs[0].text[0..extra_length], null_padding[old_len..]);
 
         patches.items[0].start1 -= extra_length;
         patches.items[0].start2 -= extra_length;
@@ -452,24 +483,30 @@ pub fn addPadding(allocator: Allocator, patch_margin: u16, patches: *PatchList) 
 
     // Add some padding on end of last diff.
     const last_idx = patches.items.len - 1;
-    if (patches.items[last_idx].diffs.items.len == 0 or
-        patches.items[last_idx].diffs.getLast().operation != .equal)
+    if (patches.items[last_idx].diffs.len == 0 or
+        patches.items[last_idx].diffs[patches.items[last_idx].diffs.len - 1].operation != .equal)
     {
         // Add nullPadding equality.
-        try patches.items[last_idx].diffs.append(allocator, try Diff.fromSlice(allocator, null_padding, .equal));
+        _ = try utils.resize(Diff, allocator, &patches.items[last_idx].diffs, patches.items[last_idx].diffs.len + 1);
+        patches.items[last_idx].diffs[patches.items[last_idx].diffs.len - 1] = try Diff.fromSlice(allocator, null_padding, .equal);
+
         patches.items[last_idx].length1 += padding_length;
         patches.items[last_idx].length2 += padding_length;
-    } else if (padding_length > patches.items[last_idx].diffs.getLast().text.len) {
+    } else if (padding_length > patches.items[last_idx].diffs[patches.items[last_idx].diffs.len - 1].text.len) {
         // Grow last equality.
-        const extra_length = padding_length - patches.items[last_idx].diffs.getLast().text.len;
+        const extra_length = padding_length - patches.items[last_idx].diffs[patches.items[last_idx].diffs.len - 1].text.len;
 
         _ = try utils.resize(
             u8,
             allocator,
-            &patches.items[last_idx].diffs.items[patches.items[last_idx].diffs.items.len - 1].text,
+            &patches.items[last_idx].diffs[patches.items[last_idx].diffs.len - 1].text,
             padding_length,
         );
-        @memcpy(patches.items[last_idx].diffs.getLast().text[padding_length - extra_length ..], null_padding[0..extra_length]);
+        std.mem.copyForwards(
+            u8,
+            patches.items[last_idx].diffs[patches.items[last_idx].diffs.len - 1].text[padding_length - extra_length ..],
+            null_padding[0..extra_length],
+        );
 
         patches.items[last_idx].length1 += extra_length;
         patches.items[last_idx].length2 += extra_length;
@@ -492,7 +529,7 @@ pub fn splitMax(comptime MatchMaxContainer: type, allocator: Allocator, patch_ma
     defer patchlist.deinit();
 
     var x: ?usize = 0;
-    while (utils.getIdxOrNull(Patch, patchlist, x.?)) |*big_patch| {
+    while (utils.getIdxOrNull(Patch, patchlist, x.?)) |big_patch| {
         defer if (x == null) {
             x = 0;
         } else {
@@ -501,9 +538,16 @@ pub fn splitMax(comptime MatchMaxContainer: type, allocator: Allocator, patch_ma
 
         if (big_patch.length1 <= patch_size) continue;
 
+        var big_diffs_ptr: usize = 0;
         // Remove the big old patch.
         _ = patchlist.orderedRemove(x.?);
-        defer @constCast(big_patch).deinit(allocator);
+        defer {
+            for (big_patch.diffs[big_diffs_ptr..]) |*diff| {
+                diff.deinit(allocator);
+            }
+            allocator.free(big_patch.diffs);
+        }
+
         if (x.? > 0) {
             x = x.? - 1;
         } else {
@@ -513,39 +557,55 @@ pub fn splitMax(comptime MatchMaxContainer: type, allocator: Allocator, patch_ma
         var start1 = big_patch.start1;
         var start2 = big_patch.start2;
         precontext.clearRetainingCapacity();
-        while (big_patch.diffs.items.len != 0) {
+        while ((big_patch.diffs.len - big_diffs_ptr) != 0) {
             // Create one of several smaller patches.
-            var patch = try Patch.init(
-                allocator,
+            var patch = Patch.init(
                 start1 - precontext.items.len,
                 start2 - precontext.items.len,
                 0,
                 0,
+                undefined,
             );
+            // NOTE: doing 2 allocs, one with the full size (- what was used) and one to resize
+            //       rather then doing an alloc every time to append
+            var diffs = try allocator.alloc(Diff, big_patch.diffs.len - big_diffs_ptr);
+            var diff_ptr: usize = 0;
+
             var empty = true;
             if (precontext.items.len != 0) {
                 patch.length1 = precontext.items.len;
                 patch.length2 = precontext.items.len;
-                try patch.diffs.append(allocator, try Diff.fromSlice(allocator, precontext.items, .equal));
+                diffs[diff_ptr] = try Diff.fromSlice(allocator, precontext.items, .equal);
+                diff_ptr += 1;
             }
-            while (big_patch.diffs.items.len != 0 and patch.length1 < patch_size - patch_margin) {
-                const diff_type = big_patch.diffs.items[0].operation;
-                var diff_text = big_patch.diffs.items[0].text;
+            while ((big_patch.diffs.len - big_diffs_ptr) != 0 and
+                patch.length1 < patch_size - patch_margin)
+            {
+                const diff_type = big_patch.diffs[big_diffs_ptr].operation;
+                var diff_text = big_patch.diffs[big_diffs_ptr].text;
                 if (diff_type == .insert) {
                     // Insertions are harmless.
                     patch.length2 += diff_text.len;
                     start2 += diff_text.len;
-                    try patch.diffs.append(allocator, big_patch.diffs.orderedRemove(0));
+
+                    diffs[diff_ptr] = big_patch.diffs[big_diffs_ptr];
+                    diff_ptr += 1;
+                    big_diffs_ptr += 1;
+
                     empty = false;
                 } else if (diff_type == .delete and
-                    patch.diffs.items.len == 1 and
-                    patch.diffs.items[0].operation == .equal and
+                    diff_ptr == 1 and
+                    diffs[0].operation == .equal and
                     diff_text.len > 2 * patch_size)
                 {
                     // This is a large deletion.  Let it pass in one chunk.
                     patch.length1 += diff_text.len;
                     start1 += diff_text.len;
-                    try patch.diffs.append(allocator, big_patch.diffs.orderedRemove(0));
+
+                    diffs[diff_ptr] = big_patch.diffs[big_diffs_ptr];
+                    diff_ptr += 1;
+                    big_diffs_ptr += 1;
+
                     empty = false;
                 } else {
                     // Deletion or equality.  Only take as much as we can stomach.
@@ -563,20 +623,34 @@ pub fn splitMax(comptime MatchMaxContainer: type, allocator: Allocator, patch_ma
                     } else {
                         empty = false;
                     }
-                    try patch.diffs.append(allocator, try Diff.fromSlice(allocator, diff_text, diff_type));
-                    if (std.mem.eql(u8, diff_text, big_patch.diffs.items[0].text)) {
-                        big_patch.diffs.items[0].deinit(allocator);
-                        _ = big_patch.diffs.orderedRemove(0);
+
+                    // have to do a resize to make more room
+                    _ = try utils.resize(Diff, allocator, &diffs, diffs.len + 1);
+                    diffs[diff_ptr] = try Diff.fromSlice(allocator, diff_text, diff_type);
+                    diff_ptr += 1;
+
+                    if (std.mem.eql(u8, diff_text, big_patch.diffs[big_diffs_ptr].text)) {
+                        big_patch.diffs[big_diffs_ptr].deinit(allocator);
+                        big_diffs_ptr += 1;
                     } else {
-                        const len = big_patch.diffs.items[0].text.len - diff_text_len;
-                        std.mem.copyForwards(u8, big_patch.diffs.items[0].text[0..len], big_patch.diffs.items[0].text[diff_text_len..]);
-                        _ = try utils.resize(u8, allocator, &big_patch.diffs.items[0].text, len);
+                        const len = big_patch.diffs[big_diffs_ptr].text.len - diff_text_len;
+                        std.mem.copyForwards(
+                            u8,
+                            big_patch.diffs[big_diffs_ptr].text[0..len],
+                            big_patch.diffs[big_diffs_ptr].text[diff_text_len..],
+                        );
+                        _ = try utils.resize(
+                            u8,
+                            allocator,
+                            &big_patch.diffs[big_diffs_ptr].text,
+                            len,
+                        );
                     }
                 }
             }
             // Compute the head context for the next patch.
             {
-                const text2 = try diff_funcs.text2(allocator, patch.diffs.items);
+                const text2 = try diff_funcs.text2(allocator, diffs[0..diff_ptr]);
                 defer allocator.free(text2);
 
                 precontext.clearRetainingCapacity(); // TODO: see if can be done with less allocs
@@ -588,7 +662,7 @@ pub fn splitMax(comptime MatchMaxContainer: type, allocator: Allocator, patch_ma
 
             postcontext = undefined;
             // Append the end context for this patch.
-            const dt1 = try diff_funcs.text1(allocator, big_patch.diffs.items);
+            const dt1 = try diff_funcs.text1(allocator, big_patch.diffs[big_diffs_ptr..]);
             defer allocator.free(dt1);
             if (dt1.len > patch_margin) {
                 postcontext = dt1[0..patch_margin];
@@ -599,24 +673,30 @@ pub fn splitMax(comptime MatchMaxContainer: type, allocator: Allocator, patch_ma
             if (postcontext.len != 0) {
                 patch.length1 += postcontext.len;
                 patch.length2 += postcontext.len;
-                if (patch.diffs.items.len != 0 and
-                    patch.diffs.getLast().operation == .equal)
+                if (diff_ptr != 0 and
+                    diffs[diff_ptr - 1].operation == .equal)
                 {
                     const old_len = try utils.resize(
                         u8,
                         allocator,
-                        &patch.diffs.items[patch.diffs.items.len - 1].text,
-                        patch.diffs.items[patch.diffs.items.len - 1].text.len + postcontext.len,
+                        &diffs[diff_ptr - 1].text,
+                        diffs[diff_ptr - 1].text.len + postcontext.len,
                     );
-                    std.mem.copyForwards(u8, patch.diffs.items[patch.diffs.items.len - 1].text[old_len..], postcontext);
+                    std.mem.copyForwards(u8, diffs[diff_ptr - 1].text[old_len..], postcontext);
                 } else {
-                    try patch.diffs.append(allocator, try Diff.fromSlice(allocator, postcontext, .equal));
+                    diffs[diff_ptr] = try Diff.fromSlice(allocator, postcontext, .equal);
+                    diff_ptr += 1;
                 }
             }
 
             if (empty) {
+                patch.diffs = diffs; // to dealocated it in the deinit call below all together
                 patch.deinit(allocator);
             } else {
+                // resize to correct size
+                _ = try utils.resize(Diff, allocator, &diffs, diff_ptr);
+                patch.diffs = diffs;
+
                 x = if (x == null) 0 else x.? + 1;
                 try patchlist.insert(x.?, patch);
             }
@@ -653,7 +733,7 @@ pub fn fromText(allocator: Allocator, textline: [:0]const u8) (Error || Allocato
     while (texts.next()) |text| {
         const header = utils.matchPatchHeader(text) orelse return Error.InvalidPatchString;
 
-        patch = try Patch.init(allocator, header[0], header[2], undefined, undefined);
+        patch = Patch.init(header[0], header[2], undefined, undefined, undefined);
         errdefer patch.deinit(allocator);
         if (header[1] == 0) {
             patch.length1 = 0;
@@ -669,6 +749,24 @@ pub fn fromText(allocator: Allocator, textline: [:0]const u8) (Error || Allocato
             patch.length2 = header[3] orelse 1;
         }
 
+        const diffs_len = blk: {
+            var parts = std.mem.splitScalar(u8, texts.rest(), '\n');
+            var len: usize = 0;
+            while (parts.next()) |line| {
+                if (line.len == 0) continue;
+                switch (line[0]) {
+                    '-', '+', ' ' => len += 1,
+                    '@' => break,
+                    else => return error.InvalidPatchMode, // WTF?
+                }
+            }
+            break :blk len;
+        };
+
+        const diffs = try allocator.alloc(Diff, diffs_len);
+        errdefer allocator.free(diffs);
+        var diffs_ptr: usize = 0;
+
         while (texts.next()) |change| {
             if (change.len == 0) continue;
 
@@ -682,15 +780,18 @@ pub fn fromText(allocator: Allocator, textline: [:0]const u8) (Error || Allocato
             switch (change[0]) {
                 '-' => {
                     // Deletion.
-                    try patch.diffs.append(allocator, try Diff.fromSlice(allocator, line, .delete));
+                    diffs[diffs_ptr] = try Diff.fromSlice(allocator, line, .delete);
+                    diffs_ptr += 1;
                 },
                 '+' => {
                     // Insertion.
-                    try patch.diffs.append(allocator, try Diff.fromSlice(allocator, line, .insert));
+                    diffs[diffs_ptr] = try Diff.fromSlice(allocator, line, .insert);
+                    diffs_ptr += 1;
                 },
                 ' ' => {
                     // Minor equality.
-                    try patch.diffs.append(allocator, try Diff.fromSlice(allocator, line, .equal));
+                    diffs[diffs_ptr] = try Diff.fromSlice(allocator, line, .equal);
+                    diffs_ptr += 1;
                 },
                 '@' => {
                     // Start of next patch.
@@ -698,9 +799,11 @@ pub fn fromText(allocator: Allocator, textline: [:0]const u8) (Error || Allocato
                     texts.index = (texts.index orelse texts.buffer.len) - text.len - 1;
                     break;
                 },
-                else => return error.InvalidPatchMode, // WTF?
+                else => unreachable,
             }
         }
+        std.debug.assert(diffs_ptr == diffs.len);
+        patch.diffs = diffs;
         try patches.append(patch);
     }
     return .{ .items = try patches.toOwnedSlice(), .allocator = allocator };

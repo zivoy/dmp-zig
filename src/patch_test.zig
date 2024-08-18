@@ -5,6 +5,7 @@ const Diff = @import("diff.zig").Diff;
 const Patch = @import("patch.zig").Patch;
 const PatchList = @import("patch.zig").PatchList;
 const PatchError = @import("patch.zig").Error;
+const testDiffList = @import("diff_test.zig").testDiffList;
 
 const testing = std.testing;
 
@@ -271,8 +272,7 @@ test "patch apply" {
 }
 
 test "patch format" {
-    var patch = try Patch.init(testing.allocator, 20, 21, 18, 17);
-    try patch.diffs.appendSlice(testing.allocator, &[_]Diff{
+    const diffs = testDiffList(&[_]Diff{
         try Diff.fromSlice(testing.allocator, "jump", .equal),
         try Diff.fromSlice(testing.allocator, "s", .delete),
         try Diff.fromSlice(testing.allocator, "ed", .insert),
@@ -282,6 +282,7 @@ test "patch format" {
         try Diff.fromSlice(testing.allocator, "\nlaz", .equal),
     });
 
+    var patch = Patch.init(20, 21, 18, 17, diffs);
     defer patch.deinit(testing.allocator);
     const expect = "@@ -21,18 +22,17 @@\n jump\n-s\n+ed\n  over \n-the\n+a\n %0Alaz\n";
 
