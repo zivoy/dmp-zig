@@ -2,6 +2,9 @@
 Zig port of the [diff-match-patch](https://github.com/google/diff-match-patch/) algorithm
 for comparing and updating and patching texts
 
+## Zig Version
+0.13.0
+
 ## Example
 ```zig
 const DiffMatchPatch = @import("diffmatchpatch").DiffMatchPatch;
@@ -39,7 +42,7 @@ under the dependencies section yourself
 Another option is to have the files locally (either by copying them or by using git submodules) and use `.path = ` in the `build.zig.zon` file
 
 
-You can then add it to the imports by doing
+You can then add it to the imports by adding to your `build.zig` file
 ```zig
 const dmp = b.dependency("diffmatchpatch", .{});
 exe.root_module.addImport("diffmatchpatch", dmp.module("root"));
@@ -54,9 +57,14 @@ You can also build for WASM by doing `zig build -Dtarget=wasm32-freestanding`
 ## Notes:
 The API follows the [Common API](https://github.com/google/diff-match-patch/wiki/API), but there might be differences
 
-### Contributing
+# Contributing
 Just make a pr
 
-### Zig Version
-0.13.0
+# Acknowledgments
+This project is a port of Google's [diff-match-patch](https://github.com/google/diff-match-patch) library, originally developed by [Neil Fraser](https://neil.fraser.name/) and licensed under [Apache License 2.0](https://github.com/google/diff-match-patch/blob/master/LICENSE).
+
+Additionally, this project references code from [go-diff](https://github.com/sergi/go-diff/), which is licensed under the [MIT License](https://github.com/sergi/go-diff/blob/master/LICENSE).
+
+# License
+This project is licensed under the [MIT License](./LICENSE).
 
