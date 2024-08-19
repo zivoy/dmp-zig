@@ -112,14 +112,14 @@ pub fn addContext(comptime MatchMaxContainer: type, allocator: Allocator, patch_
         pattern.len < match_max_bits - 2 * patch_margin)
     {
         padding += patch_margin;
-        const pattern_start = if (patch.start2 < padding) 0 else patch.start2 - padding;
+        const pattern_start = patch.start2 -| padding;
         const pattern_end = @min(text.len, patch.start2 + patch.length1 + padding);
         pattern = text[pattern_start..pattern_end];
     }
     padding += patch_margin;
 
     // add the prefix
-    const prefix_start = if (patch.start2 < padding) 0 else patch.start2 - padding;
+    const prefix_start = patch.start2 -| padding;
     const prefix_end = patch.start2;
     const prefix = text[prefix_start..prefix_end];
 
