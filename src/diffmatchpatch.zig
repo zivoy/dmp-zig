@@ -173,7 +173,7 @@ fn DiffMatchPatchCustom(MatchMaxContainer: type) type {
         // patch make parts
         ///Compute a list of patches to turn text1 into text2.
         ///A set of diffs will be computed.
-        pub inline fn patchMakeStringString(self: Self, text1: [:0]const u8, text2: [:0]const u8) std.mem.Allocator.Error!PatchList {
+        pub inline fn patchMakeStringString(self: Self, text1: []const u8, text2: []const u8) std.mem.Allocator.Error!PatchList {
             return patch.makeStringString(MatchMaxContainer, self.allocator, self.patch_margin, self.diff_edit_cost, self.diff_timeout, text1, text2);
         }
         ///Compute a list of patches to turn text1 into text2.
@@ -184,12 +184,12 @@ fn DiffMatchPatchCustom(MatchMaxContainer: type) type {
         ///Compute a list of patches to turn text1 into text2.
         ///text2 is ignored, diffs are the delta between text1 and text2.
         ///Depricated, use patchStringDiffs
-        pub inline fn patchMakeStringStringDiffs(self: Self, text1: [:0]const u8, text2: [:0]const u8, diffs: []Diff) std.mem.Allocator.Error!PatchList {
+        pub inline fn patchMakeStringStringDiffs(self: Self, text1: []const u8, text2: []const u8, diffs: []Diff) std.mem.Allocator.Error!PatchList {
             return patch.makeStringStringDiffs(MatchMaxContainer, self.allocator, self.patch_margin, text1, text2, diffs);
         }
         ///Compute a list of patches to turn text1 into text2.
         ///text2 is not provided, diffs are the delta between text1 and text2.
-        pub inline fn patchMakeStringDiffs(self: Self, text1: [:0]const u8, diffs: []Diff) std.mem.Allocator.Error!PatchList {
+        pub inline fn patchMakeStringDiffs(self: Self, text1: []const u8, diffs: []Diff) std.mem.Allocator.Error!PatchList {
             return patch.makeStringDiffs(MatchMaxContainer, self.allocator, self.patch_margin, text1, diffs);
         }
         ///Given an array of patches, return another array that is identical.
@@ -198,7 +198,7 @@ fn DiffMatchPatchCustom(MatchMaxContainer: type) type {
         }
         ///Merge a set of patches onto the text.  Return a patched text, as well
         ///as an array of true/false values indicating which patches were applied.
-        pub inline fn patchApply(self: Self, patches: PatchList, text: [:0]const u8) !struct { []const u8, []bool } {
+        pub inline fn patchApply(self: Self, patches: PatchList, text: []const u8) !struct { []const u8, []bool } {
             return patch.apply(MatchMaxContainer, self.allocator, self.diff_timeout, self.match_distance, self.match_threshold, self.patch_margin, self.patch_delete_threshold, patches, text);
         }
         ///Add some padding on text start and end so that edges can match something.
@@ -217,7 +217,7 @@ fn DiffMatchPatchCustom(MatchMaxContainer: type) type {
             return patch.toText(self.allocator, patches);
         }
         ///Parse a textual representation of patches and return a List of Patch objects.
-        pub inline fn patchFromText(self: Self, textline: [:0]const u8) (PatchError || std.mem.Allocator.Error)!PatchList {
+        pub inline fn patchFromText(self: Self, textline: []const u8) (PatchError || std.mem.Allocator.Error)!PatchList {
             return patch.fromText(self.allocator, textline);
         }
     };

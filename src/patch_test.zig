@@ -293,3 +293,31 @@ test "patch format" {
     try std.fmt.format(writer, "{}", .{patch});
     try testing.expectEqualStrings(expect, arraylist.items);
 }
+
+test "patch long and no free use" {
+    var dmp = DMP.init(testing.allocator);
+
+    const str1_src: [:0]const u8 = @embedFile("test-data/loram");
+    const str2_src: [:0]const u8 = @embedFile("test-data/loram2");
+
+    const str1 = try testing.allocator.alloc(u8, str1_src.len);
+    defer testing.allocator.free(str1);
+    @memcpy(str1, str1_src);
+
+    const str2 = try testing.allocator.alloc(u8, str2_src.len);
+    defer testing.allocator.free(str2);
+    @memcpy(str2, str2_src);
+
+    var patches = try dmp.patchMakeStringString(str1, str2);
+    defer patches.deinit();
+    const expected = "@@ -3117,27 +3117,35 @@\n am. \n-Nullam a enim metus\n+THIS PARAGRAPH IS DIFFERENT\n . Se\n";
+
+    const actual = try dmp.patchToText(patches);
+    defer testing.allocator.free(actual);
+
+    try testing.expectEqualStrings(expected, actual);
+    for (patches.items) |patch| std.debug.print("\n{d} {d} {d} {d} {any}\n", .{ patch.start1, patch.start2, patch.length1, patch.length2, patch.diffs });
+
+    try testing.expectEqualStrings(str1_src, str1);
+    try testing.expectEqualStrings(str2_src, str2);
+}

@@ -154,7 +154,7 @@ pub fn addContext(comptime MatchMaxContainer: type, allocator: Allocator, patch_
 // patch make parts
 ///Compute a list of patches to turn text1 into text2.
 ///A set of diffs will be computed.
-pub fn makeStringString(comptime MatchMaxContainer: type, allocator: Allocator, patch_margin: u16, diff_edit_cost: u16, diff_timeout: f32, text1: [:0]const u8, text2: [:0]const u8) Allocator.Error!PatchList {
+pub fn makeStringString(comptime MatchMaxContainer: type, allocator: Allocator, patch_margin: u16, diff_edit_cost: u16, diff_timeout: f32, text1: []const u8, text2: []const u8) Allocator.Error!PatchList {
     var diffs = try diff_funcs.mainStringStringBool(allocator, diff_timeout, text1, text2, true);
     defer allocator.free(diffs);
     errdefer for (diffs) |*diff| diff.deinit(allocator);
@@ -177,14 +177,14 @@ pub fn makeDiffs(comptime MatchMaxContainer: type, allocator: Allocator, patch_m
 ///Compute a list of patches to turn text1 into text2.
 ///text2 is ignored, diffs are the delta between text1 and text2.
 ///Depricated, use patchStringDiffs
-pub fn makeStringStringDiffs(comptime MatchMaxContainer: type, allocator: Allocator, patch_margin: u16, text1: [:0]const u8, text2: [:0]const u8, diffs: []Diff) !PatchList {
+pub fn makeStringStringDiffs(comptime MatchMaxContainer: type, allocator: Allocator, patch_margin: u16, text1: []const u8, text2: []const u8, diffs: []Diff) !PatchList {
     _ = text2;
     return makeStringDiffs(MatchMaxContainer, allocator, patch_margin, text1, diffs);
 }
 
 ///Compute a list of patches to turn text1 into text2.
 ///text2 is not provided, diffs are the delta between text1 and text2.
-pub fn makeStringDiffs(comptime MatchMaxContainer: type, allocator: Allocator, patch_margin: u16, text1: [:0]const u8, diffs: []Diff) Allocator.Error!PatchList {
+pub fn makeStringDiffs(comptime MatchMaxContainer: type, allocator: Allocator, patch_margin: u16, text1: []const u8, diffs: []Diff) Allocator.Error!PatchList {
     var patches = std.ArrayList(Patch).init(allocator);
     defer patches.deinit();
     if (diffs.len == 0) {
@@ -314,7 +314,7 @@ pub fn deepCopy(allocator: Allocator, patches: PatchList) Allocator.Error!PatchL
 
 ///Merge a set of patches onto the text.  Return a patched text, as well
 ///as an array of true/false values indicating which patches were applied.
-pub fn apply(comptime MatchMaxContainer: type, allocator: Allocator, diff_timeout: f32, match_distance: u32, match_threshold: f32, patch_margin: u16, patch_delete_threshold: f32, patches: PatchList, text: [:0]const u8) (match_funcs.MatchError || Allocator.Error)!struct { []const u8, []bool } {
+pub fn apply(comptime MatchMaxContainer: type, allocator: Allocator, diff_timeout: f32, match_distance: u32, match_threshold: f32, patch_margin: u16, patch_delete_threshold: f32, patches: PatchList, text: []const u8) (match_funcs.MatchError || Allocator.Error)!struct { []const u8, []bool } {
     const match_max_bits = @bitSizeOf(MatchMaxContainer);
 
     if (patches.items.len == 0) {
@@ -718,7 +718,7 @@ pub fn toText(allocator: Allocator, patches: PatchList) ![:0]const u8 {
 }
 
 ///Parse a textual representation of patches and return a List of Patch objects.
-pub fn fromText(allocator: Allocator, textline: [:0]const u8) (Error || Allocator.Error)!PatchList {
+pub fn fromText(allocator: Allocator, textline: []const u8) (Error || Allocator.Error)!PatchList {
     var patches = std.ArrayList(Patch).init(allocator);
     defer patches.deinit();
     errdefer for (patches.items) |*patch| patch.deinit(allocator);
