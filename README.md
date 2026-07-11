@@ -35,7 +35,7 @@ or you can add
 ```zig
 .diffmatchpatch = .{
     .url = "https://github.com/zivoy/dmp-zig/archive/refs/tags/v1.2.3.tar.gz",
-    .hash = "diffmatchpatch-1.2.3-bVT7V0XdAwBSnuHn39Ldp6Fpjvpj2bNQMfG5i2ei7tMd",
+    .hash = "diffmatchpatch-1.2.3-bVT7V5TSAwC6kpKvUP7DaWTe45hVX_kbG4HLgQtN33PG",
 },
 ```
 under the dependencies section yourself
