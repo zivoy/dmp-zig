@@ -3,17 +3,18 @@ Zig port of the [diff-match-patch](https://github.com/google/diff-match-patch/) 
 for comparing and updating and patching texts
 
 ## Zig Version
-0.15.0
+0.16.0
 
 ## Example
 ```zig
 const DiffMatchPatch = @import("diffmatchpatch").DiffMatchPatch;
 const dmp = DiffMatchPatch.init(testing.allocator);
+const io = std.testing.io;
 
 const str1 = "here is a string one it is a string and string and it strings the string with string and string";
 const str2 = "string two is slightly different it also strings but it strings and strings but might not string";
 
-var patches = try dmp.patchMakeStringString(str1, str2);
+var patches = try dmp.patchMakeStringString(io, str1, str2);
 defer patches.deinit();
 
 for (patches.items) |patch| std.debug.print("{any}\n", .{patch});
@@ -24,17 +25,17 @@ dmp-zig can be used as a zig library in other zig projects
 <!-- but can also be compiled into freestanding wasm, a static, or a shared library for use with other languages -->
 
 ### Using in zig
-First add it to your `build.zig.zon` file 
+First add it to your `build.zig.zon` file
 you can use this command to add the URL and hash automatically
-```sh 
-zig fetch --save https://github.com/zivoy/dmp-zig/archive/refs/tags/v1.2.2.tar.gz
+```sh
+zig fetch --save https://github.com/zivoy/dmp-zig/archive/refs/tags/v1.2.3.tar.gz
 ```
 
-or you can add 
+or you can add
 ```zig
 .diffmatchpatch = .{
-    .url = "https://github.com/zivoy/dmp-zig/archive/refs/tags/v1.2.1.tar.gz",
-    .hash = "diffmatchpatch-1.2.1-bVT7V0PTAwAtLhbAb_K3wPbYskG6t-MJHiBjRnpNIbGV",
+    .url = "https://github.com/zivoy/dmp-zig/archive/refs/tags/v1.2.3.tar.gz",
+    .hash = "diffmatchpatch-1.2.3-bVT7V0XdAwBSnuHn39Ldp6Fpjvpj2bNQMfG5i2ei7tMd",
 },
 ```
 under the dependencies section yourself
